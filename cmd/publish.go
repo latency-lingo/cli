@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	"github.com/AnthonyBobsin/latency-lingo-cli/internal"
+	"github.com/montanaflynn/stats"
 	"github.com/spf13/cobra"
 )
 
@@ -118,7 +119,7 @@ func groupDataPoints(ungrouped []internal.UngroupedMetricDataPoint) []internal.M
 
 func groupDataPointBatch(ungrouped []internal.UngroupedMetricDataPoint, startTime uint64) internal.MetricDataPoint {
 	var (
-		latencies []uint64
+		latencies []float64
 		grouped   internal.MetricDataPoint
 	)
 
@@ -132,25 +133,21 @@ func groupDataPointBatch(ungrouped []internal.UngroupedMetricDataPoint, startTim
 			grouped.VirtualUsers = dp.VirtualUsers
 		}
 
-		latencies = append(latencies, dp.Latency)
+		latencies = append(latencies, float64(dp.Latency))
 	}
 
-	// TODO(bobsin): properly set latencies
 	// TODO(bobsin): derive globals
 	grouped.Latencies = &internal.Latencies{}
-	grouped.Latencies.AvgMs = calcAvg(latencies)
+	grouped.Latencies.AvgMs, _ = stats.Mean(latencies)
+	grouped.Latencies.MaxMs, _ = stats.Max(latencies)
+	grouped.Latencies.MinMs, _ = stats.Min(latencies)
+	grouped.Latencies.P50Ms, _ = stats.Percentile(latencies, 50)
+	grouped.Latencies.P75Ms, _ = stats.Percentile(latencies, 75)
+	grouped.Latencies.P90Ms, _ = stats.Percentile(latencies, 90)
+	grouped.Latencies.P95Ms, _ = stats.Percentile(latencies, 95)
+	grouped.Latencies.P99Ms, _ = stats.Percentile(latencies, 99)
 
 	return grouped
-}
-
-func calcAvg(numbers []uint64) float32 {
-	size := len(numbers)
-
-	sum := 0
-	for _, num := range numbers {
-		sum += int(num)
-	}
-	return float32(sum / size)
 }
 
 func calculateIntervalFloor(timeStamp uint64) uint64 {
