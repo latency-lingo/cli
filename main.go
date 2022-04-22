@@ -1,5 +1,5 @@
 /*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
+Copyright © 2022 Anthony Bobsin anthony.bobsin.dev@gmail.com
 
 */
 package main
