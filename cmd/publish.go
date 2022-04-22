@@ -6,7 +6,6 @@ package cmd
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"io"
 	"log"
 	"os"
@@ -31,14 +30,13 @@ test results dataset.`,
 
 		reportResponse := internal.CreateReport("http://localhost:5000", "Test Report Golang")
 
-		log.Println("Created report: ", reportResponse.Result.Data.ID)
+		log.Println("Created report", reportResponse.Result.Data.ID)
 
 		rows := parseDataFile(dataFile)
 		dataPoints := groupDataPoints(rows)
 
-		if json, err := json.Marshal(dataPoints); err == nil {
-			log.Println("Derived data points: ", string(json))
-		}
+		internal.PublishDataPoints("http://localhost:5000", reportResponse.Result.Data.ID, dataPoints)
+		log.Println("Published", len(dataPoints), "data points")
 	},
 }
 

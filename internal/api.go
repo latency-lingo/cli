@@ -27,6 +27,16 @@ type CreateReportResponse struct {
 	} `json:"result"`
 }
 
+type PublishDataPointsRequestData struct {
+	ReportUUID string            `json:"reportUuid"`
+	Action     string            `json:"action"`
+	DataPoints []MetricDataPoint `json:"dataPoints"`
+}
+
+type PublishDataPointsRequest struct {
+	Data *PublishDataPointsRequestData `json:"data"`
+}
+
 func CreateReport(host string, label string) CreateReportResponse {
 	postBody, _ := json.Marshal(map[string]map[string]string{
 		"data": {
@@ -41,10 +51,13 @@ func CreateReport(host string, label string) CreateReportResponse {
 
 	defer resp.Body.Close()
 
-	//Read the response body
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatalln(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalln("Request failed with:", string(body))
 	}
 
 	var parsed CreateReportResponse
@@ -53,4 +66,30 @@ func CreateReport(host string, label string) CreateReportResponse {
 	}
 
 	return parsed
+}
+
+func PublishDataPoints(host string, reportId string, dataPoints []MetricDataPoint) {
+	postBody, _ := json.Marshal(PublishDataPointsRequest{
+		Data: &PublishDataPointsRequestData{
+			ReportUUID: reportId,
+			Action:     "add",
+			DataPoints: dataPoints,
+		},
+	})
+
+	resp, err := http.Post(host+"/v1/reports.updateData", "application/json", bytes.NewBuffer(postBody))
+	if err != nil {
+		log.Fatalf("An Error Occured %v", err)
+	}
+
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalln("Request failed with:", string(body))
+	}
 }
