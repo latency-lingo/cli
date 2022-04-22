@@ -16,8 +16,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type GlobalDataCounter struct {
+	TotalRequests   uint64
+	TotalFailures   uint64
+	MaxVirtualUsers uint64
+	RawLatencies    []float64
+}
+
 var (
-	dataFile string
+	dataFile          string
+	globalDataCounter GlobalDataCounter
 )
 
 // publishCmd represents the publish command
@@ -136,18 +144,30 @@ func groupDataPointBatch(ungrouped []internal.UngroupedMetricDataPoint, startTim
 		latencies = append(latencies, float64(dp.Latency))
 	}
 
-	// TODO(bobsin): derive globals
-	grouped.Latencies = &internal.Latencies{}
-	grouped.Latencies.AvgMs, _ = stats.Mean(latencies)
-	grouped.Latencies.MaxMs, _ = stats.Max(latencies)
-	grouped.Latencies.MinMs, _ = stats.Min(latencies)
-	grouped.Latencies.P50Ms, _ = stats.Percentile(latencies, 50)
-	grouped.Latencies.P75Ms, _ = stats.Percentile(latencies, 75)
-	grouped.Latencies.P90Ms, _ = stats.Percentile(latencies, 90)
-	grouped.Latencies.P95Ms, _ = stats.Percentile(latencies, 95)
-	grouped.Latencies.P99Ms, _ = stats.Percentile(latencies, 99)
+	grouped.Latencies = calculateLatencySummary(latencies)
+
+	globalDataCounter.TotalRequests += grouped.Requests
+	globalDataCounter.TotalFailures += grouped.Failures
+	if grouped.VirtualUsers > globalDataCounter.MaxVirtualUsers {
+		globalDataCounter.MaxVirtualUsers = grouped.VirtualUsers
+	}
+	globalDataCounter.RawLatencies = append(globalDataCounter.RawLatencies, latencies...)
 
 	return grouped
+}
+
+func calculateLatencySummary(latencies []float64) *internal.Latencies {
+	summary := internal.Latencies{}
+	summary.AvgMs, _ = stats.Mean(latencies)
+	summary.MaxMs, _ = stats.Max(latencies)
+	summary.MinMs, _ = stats.Min(latencies)
+	summary.P50Ms, _ = stats.Percentile(latencies, 50)
+	summary.P75Ms, _ = stats.Percentile(latencies, 75)
+	summary.P90Ms, _ = stats.Percentile(latencies, 90)
+	summary.P95Ms, _ = stats.Percentile(latencies, 95)
+	summary.P99Ms, _ = stats.Percentile(latencies, 99)
+
+	return &summary
 }
 
 func calculateIntervalFloor(timeStamp uint64) uint64 {
