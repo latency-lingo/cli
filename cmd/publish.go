@@ -29,15 +29,16 @@ test results dataset.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Println("publish called with file: ", dataFile)
 
+		reportResponse := internal.CreateReport("http://localhost:5000", "Test Report Golang")
+
+		log.Println("Created report: ", reportResponse.Result.Data.ID)
+
 		rows := parseDataFile(dataFile)
 		dataPoints := groupDataPoints(rows)
 
-		json, err := json.Marshal(dataPoints)
-		if err != nil {
-			log.Fatal(err)
+		if json, err := json.Marshal(dataPoints); err == nil {
+			log.Println("Derived data points: ", string(json))
 		}
-
-		log.Println("Derived data points: ", string(json))
 	},
 }
 
