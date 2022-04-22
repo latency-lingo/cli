@@ -64,7 +64,7 @@ test results dataset.`,
 		case "production":
 			log.Printf("Report can be found at https://latencylingo.com/reports/%s", reportUuid)
 		case "development":
-			log.Printf("Report can be found at http://localhost:4000/reports/%s", reportUuid)
+			log.Printf("Report can be found at http://localhost:3000/reports/%s", reportUuid)
 		}
 	},
 }
