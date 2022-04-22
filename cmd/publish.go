@@ -25,6 +25,8 @@ type GlobalDataCounter struct {
 
 var (
 	dataFile          string
+	reportUuid        string
+	environment       string
 	globalDataCounter GlobalDataCounter
 )
 
@@ -35,28 +37,44 @@ var publishCmd = &cobra.Command{
 	Long: `Command to create a performance test report on Latency Lingo based on the specified
 test results dataset.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		log.Println("publish called with file: ", dataFile)
+		if environment != "production" && environment != "development" {
+			log.Fatalln("User specified unknown environment", environment)
+		}
 
-		reportResponse := internal.CreateReport("http://localhost:5000", "Test Report Golang")
+		log.Println("Parsing provided file", dataFile)
 
-		log.Println("Created report", reportResponse.Result.Data.ID)
+		if reportUuid == "" {
+			reportUuid = internal.CreateReport(hostName(environment), "Test Report").Result.Data.ID
+			log.Println("Created a new report")
+		}
+
+		log.Println("Using report", reportUuid)
 
 		rows := parseDataFile(dataFile)
 		dataPoints := groupDataPoints(rows)
 
-		internal.PublishDataPoints("http://localhost:5000", reportResponse.Result.Data.ID, dataPoints)
+		internal.PublishDataPoints(hostName(environment), reportUuid, dataPoints)
 		log.Println("Published", len(dataPoints), "data points")
 
 		metricSummary := calculateMetricSummary(globalDataCounter)
-		internal.PublishMetricSummary("http://localhost:5000", reportResponse.Result.Data.ID, metricSummary)
+		internal.PublishMetricSummary(hostName(environment), reportUuid, metricSummary)
 		log.Println("Published metric summary")
+
+		switch environment {
+		case "production":
+			log.Printf("Report can be found at https://latencylingo.com/reports/%s", reportUuid)
+		case "development":
+			log.Printf("Report can be found at http://localhost:4000/reports/%s", reportUuid)
+		}
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(publishCmd)
 
-	publishCmd.Flags().StringVar(&dataFile, "file", "", "Test results file to parse and publish")
+	publishCmd.Flags().StringVar(&dataFile, "file", "", "Test results file to parse and publish.")
+	publishCmd.Flags().StringVar(&reportUuid, "report", "", "Existing report to publish metrics for. If not provided, a new report will be created.")
+	publishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
 	publishCmd.MarkFlagRequired("file")
 }
 
@@ -196,4 +214,16 @@ func calculateMetricSummary(globalDataCounter GlobalDataCounter) *internal.Metri
 func calculateIntervalFloor(timeStamp uint64) uint64 {
 	difference := timeStamp % 60 % 5
 	return timeStamp - difference
+}
+
+func hostName(env string) string {
+	switch env {
+	case "production":
+		return "https://latency-lingo.web.app"
+	case "development":
+		return "http://localhost:5000"
+	default:
+		log.Fatalln("User specified unknown environment", env)
+		return ""
+	}
 }
