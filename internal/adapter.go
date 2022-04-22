@@ -7,10 +7,10 @@ import (
 )
 
 type MetricSummary struct {
-	Latencies       *Latencies
-	TotalRequests   uint64
-	TotalFailures   uint64
-	MaxVirtualUsers uint64
+	Latencies       *Latencies `json:"latencies"`
+	TotalRequests   uint64     `json:"totalRequests"`
+	TotalFailures   uint64     `json:"totalFailures"`
+	MaxVirtualUsers uint64     `json:"maxVirtualUsers"`
 }
 
 type Latencies struct {
@@ -21,7 +21,7 @@ type Latencies struct {
 	P75Ms float64 `json:"p75Ms"`
 	P90Ms float64 `json:"p90Ms"`
 	P95Ms float64 `json:"p95Ms"`
-	P99Ms float64 `json:"p99ms"`
+	P99Ms float64 `json:"p99Ms"`
 }
 
 type MetricDataPoint struct {

@@ -37,6 +37,15 @@ type PublishDataPointsRequest struct {
 	Data *PublishDataPointsRequestData `json:"data"`
 }
 
+type PublishMetricSummaryRequestData struct {
+	ReportUUID string         `json:"reportUuid"`
+	Metrics    *MetricSummary `json:"metrics"`
+}
+
+type PublishMetricSummaryRequest struct {
+	Data *PublishMetricSummaryRequestData `json:"data"`
+}
+
 func CreateReport(host string, label string) CreateReportResponse {
 	postBody, _ := json.Marshal(map[string]map[string]string{
 		"data": {
@@ -78,6 +87,31 @@ func PublishDataPoints(host string, reportId string, dataPoints []MetricDataPoin
 	})
 
 	resp, err := http.Post(host+"/v1/reports.updateData", "application/json", bytes.NewBuffer(postBody))
+	if err != nil {
+		log.Fatalf("An Error Occured %v", err)
+	}
+
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalln("Request failed with:", string(body))
+	}
+}
+
+func PublishMetricSummary(host string, reportId string, metrics *MetricSummary) {
+	postBody, _ := json.Marshal(PublishMetricSummaryRequest{
+		Data: &PublishMetricSummaryRequestData{
+			ReportUUID: reportId,
+			Metrics:    metrics,
+		},
+	})
+
+	resp, err := http.Post(host+"/v1/reports.update", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
 		log.Fatalf("An Error Occured %v", err)
 	}

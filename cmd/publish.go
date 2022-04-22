@@ -46,6 +46,10 @@ test results dataset.`,
 
 		internal.PublishDataPoints("http://localhost:5000", reportResponse.Result.Data.ID, dataPoints)
 		log.Println("Published", len(dataPoints), "data points")
+
+		metricSummary := calculateMetricSummary(globalDataCounter)
+		internal.PublishMetricSummary("http://localhost:5000", reportResponse.Result.Data.ID, metricSummary)
+		log.Println("Published metric summary")
 	},
 }
 
@@ -117,7 +121,6 @@ func groupDataPoints(ungrouped []internal.UngroupedMetricDataPoint) []internal.M
 		batch = append(batch, dp)
 	}
 
-	// TODO(bobsin) use remaining in ungrouped variable
 	if len(batch) > 0 {
 		dataPoints = append(dataPoints, groupDataPointBatch(batch, calculateIntervalFloor(batch[0].TimeStamp)))
 	}
@@ -166,6 +169,26 @@ func calculateLatencySummary(latencies []float64) *internal.Latencies {
 	summary.P90Ms, _ = stats.Percentile(latencies, 90)
 	summary.P95Ms, _ = stats.Percentile(latencies, 95)
 	summary.P99Ms, _ = stats.Percentile(latencies, 99)
+
+	summary.AvgMs, _ = stats.Round(summary.AvgMs, 2)
+	summary.MaxMs, _ = stats.Round(summary.MaxMs, 2)
+	summary.MinMs, _ = stats.Round(summary.MinMs, 2)
+	summary.P50Ms, _ = stats.Round(summary.P50Ms, 2)
+	summary.P75Ms, _ = stats.Round(summary.P75Ms, 2)
+	summary.P90Ms, _ = stats.Round(summary.P90Ms, 2)
+	summary.P95Ms, _ = stats.Round(summary.P95Ms, 2)
+	summary.P99Ms, _ = stats.Round(summary.P99Ms, 2)
+
+	return &summary
+}
+
+func calculateMetricSummary(globalDataCounter GlobalDataCounter) *internal.MetricSummary {
+	summary := internal.MetricSummary{}
+
+	summary.TotalRequests = globalDataCounter.TotalRequests
+	summary.TotalFailures = globalDataCounter.TotalFailures
+	summary.MaxVirtualUsers = globalDataCounter.MaxVirtualUsers
+	summary.Latencies = calculateLatencySummary(globalDataCounter.RawLatencies)
 
 	return &summary
 }
