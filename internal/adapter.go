@@ -14,22 +14,22 @@ type MetricSummary struct {
 }
 
 type Latencies struct {
-	AvgMs float32
-	MinMs float32
-	MaxMs float32
-	P50Ms float32
-	P75Ms float32
-	P90Ms float32
-	P95Ms float32
-	P99Ms float32
+	AvgMs float32 `json:"avgMs"`
+	MinMs float32 `json:"minMs"`
+	MaxMs float32 `json:"maxMs"`
+	P50Ms float32 `json:"p50Ms"`
+	P75Ms float32 `json:"p75Ms"`
+	P90Ms float32 `json:"p90Ms"`
+	P95Ms float32 `json:"p95Ms"`
+	P99Ms float32 `json:"p99ms"`
 }
 
 type MetricDataPoint struct {
-	Requests     uint64
-	Failures     uint64
-	VirtualUsers uint64
-	TimeStamp    uint64
-	Latencies    *Latencies
+	Requests     uint64     `json:"requests"`
+	Failures     uint64     `json:"failures"`
+	VirtualUsers uint64     `json:"virtualUsers"`
+	TimeStamp    uint64     `json:"timeStamp"`
+	Latencies    *Latencies `json:"latencies"`
 }
 
 type UngroupedMetricDataPoint struct {

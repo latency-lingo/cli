@@ -6,7 +6,7 @@ package cmd
 
 import (
 	"encoding/csv"
-	"fmt"
+	"encoding/json"
 	"io"
 	"log"
 	"os"
@@ -27,70 +27,17 @@ var publishCmd = &cobra.Command{
 	Long: `Command to create a performance test report on Latency Lingo based on the specified
 test results dataset.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("publish called with file: ", dataFile)
+		log.Println("publish called with file: ", dataFile)
 
-		f, err := os.Open(dataFile)
+		rows := parseDataFile(dataFile)
+		dataPoints := groupDataPoints(rows)
+
+		json, err := json.Marshal(dataPoints)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		defer f.Close()
-
-		csvReader := csv.NewReader(f)
-
-		// skip header
-		if _, err := csvReader.Read(); err != nil {
-			log.Fatal(err)
-			panic(err)
-		}
-
-		var (
-			startTime  uint64
-			dataPoints []internal.MetricDataPoint
-			ungrouped  []internal.UngroupedMetricDataPoint
-		)
-
-		for {
-			rec, err := csvReader.Read()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			parsed := internal.TranslateJmeterRow(rec)
-			if parsed.TimeStamp > 0 {
-				ungrouped = append(ungrouped, internal.TranslateJmeterRow((rec)))
-			}
-		}
-
-		sort.SliceStable(ungrouped, func(i int, j int) bool {
-			return ungrouped[i].TimeStamp < ungrouped[j].TimeStamp
-		})
-
-		var batch []internal.UngroupedMetricDataPoint
-
-		for _, dp := range ungrouped {
-			if startTime == 0 {
-				// init start time to last 5s interval from time stamp
-				startTime = calculateIntervalFloor(dp.TimeStamp)
-				log.Println("Setting startTime to: ", startTime)
-			}
-
-			if dp.TimeStamp-startTime > 5 {
-				dataPoints = append(dataPoints, groupDataPointWindow(batch, startTime))
-				batch = nil
-				startTime = 0
-			}
-
-			batch = append(batch, dp)
-		}
-
-		// TODO(bobsin) use remaining in ungrouped variable
-		if len(batch) > 0 {
-			dataPoints = append(dataPoints, groupDataPointWindow(batch, calculateIntervalFloor(batch[0].TimeStamp)))
-		}
+		log.Println("Derived data points: ", string(json))
 	},
 }
 
@@ -101,13 +48,80 @@ func init() {
 	publishCmd.MarkFlagRequired("file")
 }
 
-func groupDataPointWindow(ungrouped []internal.UngroupedMetricDataPoint, startTime uint64) internal.MetricDataPoint {
+func parseDataFile(file string) []internal.UngroupedMetricDataPoint {
+	var (
+		rows []internal.UngroupedMetricDataPoint
+	)
+
+	f, err := os.Open(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer f.Close()
+
+	csvReader := csv.NewReader(f)
+
+	// skip header
+	if _, err := csvReader.Read(); err != nil {
+		log.Fatal(err)
+		panic(err)
+	}
+
+	for {
+		rec, err := csvReader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		rows = append(rows, internal.TranslateJmeterRow((rec)))
+	}
+
+	sort.SliceStable(rows, func(i int, j int) bool {
+		return rows[i].TimeStamp < rows[j].TimeStamp
+	})
+
+	return rows
+}
+
+func groupDataPoints(ungrouped []internal.UngroupedMetricDataPoint) []internal.MetricDataPoint {
+	var (
+		startTime  uint64
+		dataPoints []internal.MetricDataPoint
+		batch      []internal.UngroupedMetricDataPoint
+	)
+
+	for _, dp := range ungrouped {
+		if startTime == 0 {
+			// init start time to last 5s interval from time stamp
+			startTime = calculateIntervalFloor(dp.TimeStamp)
+		}
+
+		if dp.TimeStamp-startTime > 5 {
+			dataPoints = append(dataPoints, groupDataPointBatch(batch, startTime))
+			batch = nil
+			startTime = 0
+		}
+
+		batch = append(batch, dp)
+	}
+
+	// TODO(bobsin) use remaining in ungrouped variable
+	if len(batch) > 0 {
+		dataPoints = append(dataPoints, groupDataPointBatch(batch, calculateIntervalFloor(batch[0].TimeStamp)))
+	}
+
+	return dataPoints
+}
+
+func groupDataPointBatch(ungrouped []internal.UngroupedMetricDataPoint, startTime uint64) internal.MetricDataPoint {
 	var (
 		latencies []uint64
 		grouped   internal.MetricDataPoint
 	)
-
-	log.Println("Grouping data points: ", ungrouped)
 
 	grouped.TimeStamp = startTime
 
@@ -127,8 +141,6 @@ func groupDataPointWindow(ungrouped []internal.UngroupedMetricDataPoint, startTi
 	grouped.Latencies = &internal.Latencies{}
 	grouped.Latencies.AvgMs = calcAvg(latencies)
 
-	log.Println("Created grouped data point: ", grouped)
-
 	return grouped
 }
 
@@ -144,6 +156,5 @@ func calcAvg(numbers []uint64) float32 {
 
 func calculateIntervalFloor(timeStamp uint64) uint64 {
 	difference := timeStamp % 60 % 5
-	log.Println("Difference for timeStamp: ", difference)
 	return timeStamp - difference
 }
