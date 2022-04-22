@@ -1,15 +1,15 @@
 package internal
 
 import (
-	"fmt"
-	"strconv"
 	"log"
+	"math"
+	"strconv"
 )
 
 type MetricSummary struct {
-	Latencies *Latencies
-	TotalRequests uint64
-	TotalFailures uint64
+	Latencies       *Latencies
+	TotalRequests   uint64
+	TotalFailures   uint64
 	MaxVirtualUsers uint64
 }
 
@@ -25,19 +25,19 @@ type Latencies struct {
 }
 
 type MetricDataPoint struct {
-	Requests uint64
-	Failures uint64
+	Requests     uint64
+	Failures     uint64
 	VirtualUsers uint64
-	TimeStamp uint64
-	Latencies *Latencies
+	TimeStamp    uint64
+	Latencies    *Latencies
 }
 
 type UngroupedMetricDataPoint struct {
-	Requests uint64
-	Failures uint64
+	Requests     uint64
+	Failures     uint64
 	VirtualUsers uint64
-	TimeStamp uint64
-	Latency uint64
+	TimeStamp    uint64
+	Latency      uint64
 }
 
 func TranslateJmeterRow(row []string) UngroupedMetricDataPoint {
@@ -45,7 +45,7 @@ func TranslateJmeterRow(row []string) UngroupedMetricDataPoint {
 		failures uint64
 	)
 
-	if (row[7] == "true") {
+	if row[7] == "true" {
 		failures = 0
 	} else {
 		failures = 1
@@ -68,14 +68,12 @@ func TranslateJmeterRow(row []string) UngroupedMetricDataPoint {
 	}
 
 	parsed := UngroupedMetricDataPoint{
-		Requests: 1,
-		Failures: failures,
+		Requests:     1,
+		Failures:     failures,
 		VirtualUsers: virtualUsers,
-		TimeStamp: timeStamp,
-		Latency: latency,
+		TimeStamp:    uint64(math.Round(float64(timeStamp / 1000.0))),
+		Latency:      latency,
 	}
-
-	fmt.Println(parsed)
 
 	return parsed
 }
