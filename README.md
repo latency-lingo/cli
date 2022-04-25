@@ -9,7 +9,7 @@ This CLI helps publish test metrics from your load test runner to Latency Lingo 
 ### Installation
 Install the appropriate executable from [the latest release](https://github.com/AnthonyBobsin/latency-lingo-cli/releases/latest).
 
-Example for OS X with x86 chips.
+Example for OS X with x86 chip.
 ```sh
 curl -L https://github.com/AnthonyBobsin/latency-lingo-cli/releases/latest/download/latency-lingo-cli_1.0.0_Darwin_x86_64.tar.gz | tar -xz
 ```
@@ -31,7 +31,7 @@ Example output:
 2022/04/25 17:20:16 Report can be found at https://latencylingo.com/reports/740ae633-bdb4-421a-92fd-6d1c02ae89ad
 ```
 
-The `publish` command also supports publishing events for an existing report ID. 
+The `publish` command also supports publishing events for an existing report. 
 ```sh
 ./latency-lingo-cli publish --file <file_name> --report <report_uuid>
 ```
