@@ -28,9 +28,10 @@ type CreateReportResponse struct {
 }
 
 type PublishDataPointsRequestData struct {
-	ReportUUID string            `json:"reportUuid"`
-	Action     string            `json:"action"`
-	DataPoints []MetricDataPoint `json:"dataPoints"`
+	ReportUUID        string                       `json:"reportUuid"`
+	Action            string                       `json:"action"`
+	DataPoints        []MetricDataPoint            `json:"dataPoints"`
+	DataPointsByLabel map[string][]MetricDataPoint `json:"dataPointsByLabel"`
 }
 
 type PublishDataPointsRequest struct {
@@ -38,20 +39,25 @@ type PublishDataPointsRequest struct {
 }
 
 type PublishMetricSummaryRequestData struct {
-	ReportUUID string         `json:"reportUuid"`
-	Metrics    *MetricSummary `json:"metrics"`
+	ReportUUID     string                   `json:"reportUuid"`
+	Metrics        MetricSummary            `json:"metrics"`
+	MetricsByLabel map[string]MetricSummary `json:"metricsByLabel"`
 }
 
 type PublishMetricSummaryRequest struct {
-	Data *PublishMetricSummaryRequestData `json:"data"`
+	Data PublishMetricSummaryRequestData `json:"data"`
 }
 
 func CreateReport(host string, label string) CreateReportResponse {
-	postBody, _ := json.Marshal(map[string]map[string]string{
+	postBody, err := json.Marshal(map[string]map[string]string{
 		"data": {
 			"label": label,
 		},
 	})
+
+	if err != nil {
+		log.Fatalf("An error occurred while serializing request body %v", err)
+	}
 
 	resp, err := http.Post(host+"/v1/reports.create", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
@@ -77,14 +83,19 @@ func CreateReport(host string, label string) CreateReportResponse {
 	return parsed
 }
 
-func PublishDataPoints(host string, reportId string, dataPoints []MetricDataPoint) {
-	postBody, _ := json.Marshal(PublishDataPointsRequest{
+func PublishDataPoints(host string, reportId string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) {
+	postBody, err := json.Marshal(PublishDataPointsRequest{
 		Data: &PublishDataPointsRequestData{
-			ReportUUID: reportId,
-			Action:     "add",
-			DataPoints: dataPoints,
+			ReportUUID:        reportId,
+			Action:            "add",
+			DataPoints:        dataPoints,
+			DataPointsByLabel: dataPointsByLabel,
 		},
 	})
+
+	if err != nil {
+		log.Fatalf("An error occurred while serializing request body %v", err)
+	}
 
 	resp, err := http.Post(host+"/v1/reports.updateData", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
@@ -103,13 +114,18 @@ func PublishDataPoints(host string, reportId string, dataPoints []MetricDataPoin
 	}
 }
 
-func PublishMetricSummary(host string, reportId string, metrics *MetricSummary) {
-	postBody, _ := json.Marshal(PublishMetricSummaryRequest{
-		Data: &PublishMetricSummaryRequestData{
-			ReportUUID: reportId,
-			Metrics:    metrics,
+func PublishMetricSummary(host string, reportId string, metrics MetricSummary, metricsByLabel map[string]MetricSummary) {
+	postBody, err := json.Marshal(PublishMetricSummaryRequest{
+		Data: PublishMetricSummaryRequestData{
+			ReportUUID:     reportId,
+			Metrics:        metrics,
+			MetricsByLabel: metricsByLabel,
 		},
 	})
+
+	if err != nil {
+		log.Fatalf("An error occurred while serializing request body %v", err)
+	}
 
 	resp, err := http.Post(host+"/v1/reports.update", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {

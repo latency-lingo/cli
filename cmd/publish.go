@@ -17,18 +17,28 @@ import (
 )
 
 type GlobalDataCounter struct {
+	Label           string
 	TotalRequests   uint64
 	TotalFailures   uint64
 	MaxVirtualUsers uint64
 	RawLatencies    []float64
 }
 
+type LabeledDataCounter = map[string]*GlobalDataCounter
+
+type GroupedResult struct {
+	DataPoints        []internal.MetricDataPoint
+	DataPointsByLabel map[string][]internal.MetricDataPoint
+}
+
 var (
-	dataFile          string
-	reportUuid        string
-	environment       string
-	globalDataCounter GlobalDataCounter
+	dataFile    string
+	reportUuid  string
+	environment string
 )
+
+var globalDataCounter = &GlobalDataCounter{}
+var labeledDataCounter = make(map[string]*GlobalDataCounter)
 
 // publishCmd represents the publish command
 var publishCmd = &cobra.Command{
@@ -51,13 +61,17 @@ test results dataset.`,
 		log.Println("Using report", reportUuid)
 
 		rows := parseDataFile(dataFile)
-		dataPoints := groupDataPoints(rows)
+		groupedResult := groupDataPoints(rows)
 
-		internal.PublishDataPoints(hostName(environment), reportUuid, dataPoints)
-		log.Println("Published", len(dataPoints), "data points")
+		internal.PublishDataPoints(hostName(environment), reportUuid, groupedResult.DataPoints, groupedResult.DataPointsByLabel)
+		log.Println("Published", len(groupedResult.DataPoints), "data points")
 
 		metricSummary := calculateMetricSummary(globalDataCounter)
-		internal.PublishMetricSummary(hostName(environment), reportUuid, metricSummary)
+		metricSummaryByLabel := make(map[string]internal.MetricSummary)
+		for label, counter := range labeledDataCounter {
+			metricSummaryByLabel[label] = calculateMetricSummary(counter)
+		}
+		internal.PublishMetricSummary(hostName(environment), reportUuid, metricSummary, metricSummaryByLabel)
 		log.Println("Published metric summary")
 
 		switch environment {
@@ -117,12 +131,16 @@ func parseDataFile(file string) []internal.UngroupedMetricDataPoint {
 	return rows
 }
 
-func groupDataPoints(ungrouped []internal.UngroupedMetricDataPoint) []internal.MetricDataPoint {
+func groupDataPoints(ungrouped []internal.UngroupedMetricDataPoint) GroupedResult {
 	var (
-		startTime  uint64
-		dataPoints []internal.MetricDataPoint
-		batch      []internal.UngroupedMetricDataPoint
+		startTime         uint64
+		dataPoints        []internal.MetricDataPoint
+		dataPointsByLabel map[string][]internal.MetricDataPoint
+		batch             []internal.UngroupedMetricDataPoint
+		batchByLabel      map[string][]internal.UngroupedMetricDataPoint
 	)
+	dataPointsByLabel = make(map[string][]internal.MetricDataPoint)
+	batchByLabel = make(map[string][]internal.UngroupedMetricDataPoint)
 
 	for _, dp := range ungrouped {
 		if startTime == 0 {
@@ -130,23 +148,38 @@ func groupDataPoints(ungrouped []internal.UngroupedMetricDataPoint) []internal.M
 			startTime = calculateIntervalFloor(dp.TimeStamp)
 		}
 
+		// NOTE(bobsin): what happens if CSV rows aren't in perfect order?
 		if dp.TimeStamp-startTime > 5 {
-			dataPoints = append(dataPoints, groupDataPointBatch(batch, startTime))
+			dataPoints = append(dataPoints, groupDataPointBatch(batch, startTime, ""))
+			mergeDataPointsByLabel(dataPointsByLabel, batchByLabel, startTime)
 			batch = nil
+			batchByLabel = map[string][]internal.UngroupedMetricDataPoint{}
 			startTime = 0
 		}
 
 		batch = append(batch, dp)
+		batchByLabel[dp.Label] = append(batchByLabel[dp.Label], dp)
 	}
 
 	if len(batch) > 0 {
-		dataPoints = append(dataPoints, groupDataPointBatch(batch, calculateIntervalFloor(batch[0].TimeStamp)))
+		startTime = calculateIntervalFloor(batch[0].TimeStamp)
+		dataPoints = append(dataPoints, groupDataPointBatch(batch, startTime, ""))
+		mergeDataPointsByLabel(dataPointsByLabel, batchByLabel, startTime)
 	}
 
-	return dataPoints
+	return GroupedResult{
+		DataPoints:        dataPoints,
+		DataPointsByLabel: dataPointsByLabel,
+	}
 }
 
-func groupDataPointBatch(ungrouped []internal.UngroupedMetricDataPoint, startTime uint64) internal.MetricDataPoint {
+func mergeDataPointsByLabel(existing map[string][]internal.MetricDataPoint, batch map[string][]internal.UngroupedMetricDataPoint, startTime uint64) {
+	for label, dataPoints := range batch {
+		existing[label] = append(existing[label], groupDataPointBatch(dataPoints, startTime, label))
+	}
+}
+
+func groupDataPointBatch(ungrouped []internal.UngroupedMetricDataPoint, startTime uint64, label string) internal.MetricDataPoint {
 	var (
 		latencies []float64
 		grouped   internal.MetricDataPoint
@@ -167,14 +200,25 @@ func groupDataPointBatch(ungrouped []internal.UngroupedMetricDataPoint, startTim
 
 	grouped.Latencies = calculateLatencySummary(latencies)
 
-	globalDataCounter.TotalRequests += grouped.Requests
-	globalDataCounter.TotalFailures += grouped.Failures
-	if grouped.VirtualUsers > globalDataCounter.MaxVirtualUsers {
-		globalDataCounter.MaxVirtualUsers = grouped.VirtualUsers
+	if label != "" {
+		updateGlobalCounter(globalDataCounter, grouped, latencies)
+		if labeledDataCounter[label] == nil {
+			labeledDataCounter[label] = &GlobalDataCounter{}
+		}
+
+		updateGlobalCounter(labeledDataCounter[label], grouped, latencies)
 	}
-	globalDataCounter.RawLatencies = append(globalDataCounter.RawLatencies, latencies...)
 
 	return grouped
+}
+
+func updateGlobalCounter(counter *GlobalDataCounter, metric internal.MetricDataPoint, latencies []float64) {
+	counter.TotalRequests += metric.Requests
+	counter.TotalFailures += metric.Failures
+	if metric.VirtualUsers > counter.MaxVirtualUsers {
+		counter.MaxVirtualUsers = metric.VirtualUsers
+	}
+	counter.RawLatencies = append(counter.RawLatencies, latencies...)
 }
 
 func calculateLatencySummary(latencies []float64) *internal.Latencies {
@@ -200,7 +244,7 @@ func calculateLatencySummary(latencies []float64) *internal.Latencies {
 	return &summary
 }
 
-func calculateMetricSummary(globalDataCounter GlobalDataCounter) *internal.MetricSummary {
+func calculateMetricSummary(globalDataCounter *GlobalDataCounter) internal.MetricSummary {
 	summary := internal.MetricSummary{}
 
 	summary.TotalRequests = globalDataCounter.TotalRequests
@@ -208,7 +252,7 @@ func calculateMetricSummary(globalDataCounter GlobalDataCounter) *internal.Metri
 	summary.MaxVirtualUsers = globalDataCounter.MaxVirtualUsers
 	summary.Latencies = calculateLatencySummary(globalDataCounter.RawLatencies)
 
-	return &summary
+	return summary
 }
 
 func calculateIntervalFloor(timeStamp uint64) uint64 {

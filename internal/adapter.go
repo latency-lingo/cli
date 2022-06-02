@@ -7,6 +7,7 @@ import (
 )
 
 type MetricSummary struct {
+	Label           string     `json:"label"`
 	Latencies       *Latencies `json:"latencies"`
 	TotalRequests   uint64     `json:"totalRequests"`
 	TotalFailures   uint64     `json:"totalFailures"`
@@ -25,6 +26,7 @@ type Latencies struct {
 }
 
 type MetricDataPoint struct {
+	Label        string     `json:"label"`
 	Requests     uint64     `json:"requests"`
 	Failures     uint64     `json:"failures"`
 	VirtualUsers uint64     `json:"virtualUsers"`
@@ -38,6 +40,7 @@ type UngroupedMetricDataPoint struct {
 	VirtualUsers uint64
 	TimeStamp    uint64
 	Latency      uint64
+	Label        string
 }
 
 func TranslateJmeterRow(row []string) UngroupedMetricDataPoint {
@@ -68,6 +71,7 @@ func TranslateJmeterRow(row []string) UngroupedMetricDataPoint {
 	}
 
 	parsed := UngroupedMetricDataPoint{
+		Label:        row[2],
 		Requests:     1,
 		Failures:     failures,
 		VirtualUsers: virtualUsers,
