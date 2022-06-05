@@ -33,6 +33,7 @@ type GroupedResult struct {
 
 var (
 	dataFile    string
+	reportLabel string
 	reportUuid  string
 	reportToken string
 	environment string
@@ -55,7 +56,7 @@ test results dataset.`,
 		log.Println("Parsing provided file", dataFile)
 
 		if reportUuid == "" {
-			reportResponse := internal.CreateReport(hostName(environment), "Test Report").Result.Data
+			reportResponse := internal.CreateReport(hostName(environment), reportLabel).Result.Data
 			reportUuid = reportResponse.ID
 			reportToken = reportResponse.WriteToken
 			log.Println("Created a new report")
@@ -90,9 +91,10 @@ func init() {
 	rootCmd.AddCommand(publishCmd)
 
 	publishCmd.Flags().StringVar(&dataFile, "file", "", "Test results file to parse and publish.")
+	publishCmd.Flags().StringVar(&reportLabel, "label", "Test Report", "Label to use when creating a new report.")
+	publishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
 	publishCmd.Flags().StringVar(&reportUuid, "report", "", "Existing report to publish metrics for. If not provided, a new report will be created.")
 	publishCmd.Flags().StringVar(&reportToken, "token", "", "Token to use when publishing metrics. Only required if `report` flag is passed.")
-	publishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
 	publishCmd.MarkFlagRequired("file")
 }
 
