@@ -12,9 +12,10 @@ type CreateReportResponse struct {
 	Result struct {
 		Success bool `json:"success"`
 		Data    struct {
-			ID      string `json:"id"`
-			Label   string `json:"label"`
-			Metrics struct {
+			ID         string `json:"id"`
+			WriteToken string `json:"writeToken"`
+			Label      string `json:"label"`
+			Metrics    struct {
 				Latencies struct {
 					AvgMs int `json:"avgMs"`
 				} `json:"latencies"`
@@ -29,6 +30,7 @@ type CreateReportResponse struct {
 
 type PublishDataPointsRequestData struct {
 	ReportUUID        string                       `json:"reportUuid"`
+	Token             string                       `json:"token"`
 	Action            string                       `json:"action"`
 	DataPoints        []MetricDataPoint            `json:"dataPoints"`
 	DataPointsByLabel map[string][]MetricDataPoint `json:"dataPointsByLabel"`
@@ -40,6 +42,7 @@ type PublishDataPointsRequest struct {
 
 type PublishMetricSummaryRequestData struct {
 	ReportUUID     string                   `json:"reportUuid"`
+	Token          string                   `json:"token"`
 	Metrics        MetricSummary            `json:"metrics"`
 	MetricsByLabel map[string]MetricSummary `json:"metricsByLabel"`
 }
@@ -83,10 +86,11 @@ func CreateReport(host string, label string) CreateReportResponse {
 	return parsed
 }
 
-func PublishDataPoints(host string, reportId string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) {
+func PublishDataPoints(host string, reportId string, reportToken string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) {
 	postBody, err := json.Marshal(PublishDataPointsRequest{
 		Data: &PublishDataPointsRequestData{
 			ReportUUID:        reportId,
+			Token:             reportToken,
 			Action:            "add",
 			DataPoints:        dataPoints,
 			DataPointsByLabel: dataPointsByLabel,
@@ -114,10 +118,11 @@ func PublishDataPoints(host string, reportId string, dataPoints []MetricDataPoin
 	}
 }
 
-func PublishMetricSummary(host string, reportId string, metrics MetricSummary, metricsByLabel map[string]MetricSummary) {
+func PublishMetricSummary(host string, reportId string, reportToken string, metrics MetricSummary, metricsByLabel map[string]MetricSummary) {
 	postBody, err := json.Marshal(PublishMetricSummaryRequest{
 		Data: PublishMetricSummaryRequestData{
 			ReportUUID:     reportId,
+			Token:          reportToken,
 			Metrics:        metrics,
 			MetricsByLabel: metricsByLabel,
 		},

@@ -34,6 +34,7 @@ type GroupedResult struct {
 var (
 	dataFile    string
 	reportUuid  string
+	reportToken string
 	environment string
 )
 
@@ -54,7 +55,9 @@ test results dataset.`,
 		log.Println("Parsing provided file", dataFile)
 
 		if reportUuid == "" {
-			reportUuid = internal.CreateReport(hostName(environment), "Test Report").Result.Data.ID
+			reportResponse := internal.CreateReport(hostName(environment), "Test Report").Result.Data
+			reportUuid = reportResponse.ID
+			reportToken = reportResponse.WriteToken
 			log.Println("Created a new report")
 		}
 
@@ -63,15 +66,15 @@ test results dataset.`,
 		rows := parseDataFile(dataFile)
 		groupedResult := groupDataPoints(rows)
 
-		internal.PublishDataPoints(hostName(environment), reportUuid, groupedResult.DataPoints, groupedResult.DataPointsByLabel)
+		internal.PublishDataPoints(hostName(environment), reportUuid, reportToken, groupedResult.DataPoints, groupedResult.DataPointsByLabel)
 		log.Println("Published", len(groupedResult.DataPoints), "data points")
 
-		metricSummary := calculateMetricSummary(globalDataCounter)
+		metricSummary := calculateMetricSummary(globalDataCounter, "")
 		metricSummaryByLabel := make(map[string]internal.MetricSummary)
 		for label, counter := range labeledDataCounter {
-			metricSummaryByLabel[label] = calculateMetricSummary(counter)
+			metricSummaryByLabel[label] = calculateMetricSummary(counter, label)
 		}
-		internal.PublishMetricSummary(hostName(environment), reportUuid, metricSummary, metricSummaryByLabel)
+		internal.PublishMetricSummary(hostName(environment), reportUuid, reportToken, metricSummary, metricSummaryByLabel)
 		log.Println("Published metric summary")
 
 		switch environment {
@@ -88,6 +91,7 @@ func init() {
 
 	publishCmd.Flags().StringVar(&dataFile, "file", "", "Test results file to parse and publish.")
 	publishCmd.Flags().StringVar(&reportUuid, "report", "", "Existing report to publish metrics for. If not provided, a new report will be created.")
+	publishCmd.Flags().StringVar(&reportToken, "token", "", "Token to use when publishing metrics. Only required if `report` flag is passed.")
 	publishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
 	publishCmd.MarkFlagRequired("file")
 }
@@ -148,7 +152,6 @@ func groupDataPoints(ungrouped []internal.UngroupedMetricDataPoint) GroupedResul
 			startTime = calculateIntervalFloor(dp.TimeStamp)
 		}
 
-		// NOTE(bobsin): what happens if CSV rows aren't in perfect order?
 		if dp.TimeStamp-startTime > 5 {
 			dataPoints = append(dataPoints, groupDataPointBatch(batch, startTime, ""))
 			mergeDataPointsByLabel(dataPointsByLabel, batchByLabel, startTime)
@@ -188,6 +191,10 @@ func groupDataPointBatch(ungrouped []internal.UngroupedMetricDataPoint, startTim
 	grouped.TimeStamp = startTime
 
 	for _, dp := range ungrouped {
+		if label != "" {
+			grouped.Label = label
+		}
+
 		grouped.Requests += dp.Requests
 		grouped.Failures += dp.Failures
 
@@ -244,8 +251,12 @@ func calculateLatencySummary(latencies []float64) *internal.Latencies {
 	return &summary
 }
 
-func calculateMetricSummary(globalDataCounter *GlobalDataCounter) internal.MetricSummary {
+func calculateMetricSummary(globalDataCounter *GlobalDataCounter, label string) internal.MetricSummary {
 	summary := internal.MetricSummary{}
+
+	if label != "" {
+		summary.Label = label
+	}
 
 	summary.TotalRequests = globalDataCounter.TotalRequests
 	summary.TotalFailures = globalDataCounter.TotalFailures
