@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"time"
 
 	"github.com/AnthonyBobsin/latency-lingo-cli/internal"
 	"github.com/montanaflynn/stats"
@@ -37,6 +38,7 @@ var (
 	reportUuid  string
 	reportToken string
 	environment string
+	apiKey      string
 )
 
 var globalDataCounter = &GlobalDataCounter{}
@@ -56,18 +58,29 @@ test results dataset.`,
 		log.Println("Parsing provided file", dataFile)
 
 		if reportUuid == "" {
-			reportResponse := internal.CreateReport(hostName(environment), reportLabel).Result.Data
+			reportResponse := internal.CreateReport(
+				hostName(environment),
+				apiKey,
+				reportLabel,
+			).Result.Data
 			reportUuid = reportResponse.ID
 			reportToken = reportResponse.WriteToken
 			log.Println("Created a new report")
 		}
 
 		log.Println("Using report", reportUuid)
+		time.Sleep(200 * time.Millisecond)
 
 		rows := parseDataFile(dataFile)
 		groupedResult := groupDataPoints(rows)
 
-		internal.PublishDataPoints(hostName(environment), reportUuid, reportToken, groupedResult.DataPoints, groupedResult.DataPointsByLabel)
+		internal.PublishDataPoints(
+			hostName(environment),
+			reportUuid,
+			reportToken,
+			groupedResult.DataPoints,
+			groupedResult.DataPointsByLabel,
+		)
 		log.Println("Published", len(groupedResult.DataPoints), "data points")
 
 		metricSummary := calculateMetricSummary(globalDataCounter, "")
@@ -75,7 +88,13 @@ test results dataset.`,
 		for label, counter := range labeledDataCounter {
 			metricSummaryByLabel[label] = calculateMetricSummary(counter, label)
 		}
-		internal.PublishMetricSummary(hostName(environment), reportUuid, reportToken, metricSummary, metricSummaryByLabel)
+		internal.PublishMetricSummary(
+			hostName(environment),
+			reportUuid,
+			reportToken,
+			metricSummary,
+			metricSummaryByLabel,
+		)
 		log.Println("Published metric summary")
 
 		switch environment {
@@ -93,8 +112,7 @@ func init() {
 	publishCmd.Flags().StringVar(&dataFile, "file", "", "Test results file to parse and publish.")
 	publishCmd.Flags().StringVar(&reportLabel, "label", "Test Report", "Label to use when creating a new report.")
 	publishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
-	publishCmd.Flags().StringVar(&reportUuid, "report", "", "Existing report to publish metrics for. If not provided, a new report will be created.")
-	publishCmd.Flags().StringVar(&reportToken, "token", "", "Token to use when publishing metrics. Only required if `report` flag is passed.")
+	publishCmd.Flags().StringVar(&apiKey, "api-key", "", "API key to associate this report with a user.")
 	publishCmd.MarkFlagRequired("file")
 }
 

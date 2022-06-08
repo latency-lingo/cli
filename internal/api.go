@@ -51,10 +51,11 @@ type PublishMetricSummaryRequest struct {
 	Data PublishMetricSummaryRequestData `json:"data"`
 }
 
-func CreateReport(host string, label string) CreateReportResponse {
+func CreateReport(host string, apiKey string, label string) CreateReportResponse {
 	postBody, err := json.Marshal(map[string]map[string]string{
 		"data": {
-			"label": label,
+			"apiKey": apiKey,
+			"label":  label,
 		},
 	})
 
