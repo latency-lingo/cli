@@ -69,7 +69,7 @@ test results dataset.`,
 		}
 
 		log.Println("Using report", reportUuid)
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(2000 * time.Millisecond)
 
 		rows := parseDataFile(dataFile)
 		groupedResult := groupDataPoints(rows)
