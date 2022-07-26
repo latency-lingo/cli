@@ -2,8 +2,8 @@ package internal
 
 import (
 	"log"
-	"math"
 	"strconv"
+	"time"
 )
 
 type MetricSummary struct {
@@ -60,11 +60,6 @@ func TranslateJmeterRow(row []string) UngroupedMetricDataPoint {
 		log.Println(err)
 	}
 
-	timeStamp, err := strconv.ParseUint(row[0], 10, 64)
-	if err != nil {
-		log.Println(err)
-	}
-
 	latency, err := strconv.ParseUint(row[1], 10, 32)
 	if err != nil {
 		log.Println(err)
@@ -75,9 +70,38 @@ func TranslateJmeterRow(row []string) UngroupedMetricDataPoint {
 		Requests:     1,
 		Failures:     failures,
 		VirtualUsers: virtualUsers,
-		TimeStamp:    uint64(math.Round(float64(timeStamp / 1000.0))),
+		TimeStamp:    ParseTimeStamp(row[0]),
 		Latency:      latency,
 	}
 
 	return parsed
+}
+
+var possibleTsFormats = []string{
+	"2006-01-02 15:04:05.999",
+	"2006/01/02 15:04:05.999",
+	time.RFC3339,
+	time.RFC3339Nano,
+}
+
+func ParseTimeStamp(timeStamp string) uint64 {
+	parsed, err := strconv.ParseUint(timeStamp, 10, 64)
+	if err == nil {
+		// handle the case where the timestamp is in milliseconds
+		if parsed > uint64(time.Now().Unix()+1000) {
+			return uint64(time.UnixMilli(int64(parsed)).Unix())
+		}
+
+		return parsed
+	}
+
+	for _, tsFormat := range possibleTsFormats {
+		parsed, err := time.ParseInLocation(tsFormat, timeStamp, time.Local)
+		if err == nil {
+			return uint64(parsed.Unix())
+		}
+	}
+
+	log.Fatalf("Failed to parse timeStamp: %s", timeStamp)
+	return 0
 }
