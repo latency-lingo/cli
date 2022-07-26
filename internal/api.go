@@ -88,6 +88,25 @@ func CreateReport(host string, apiKey string, label string) CreateReportResponse
 }
 
 func PublishDataPoints(host string, reportId string, reportToken string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) {
+	batch := 200
+	for i := 0; i < len(dataPoints); i += batch {
+		j := i + batch
+		if j > len(dataPoints) {
+			j = len(dataPoints)
+		}
+
+		dpByLabelBatch := make(map[string][]MetricDataPoint)
+		for k, v := range dataPointsByLabel {
+			if i < len(v) && j > len(v) {
+				dpByLabelBatch[k] = v[i:j]
+			}
+		}
+
+		PublishDataPointsBatch(host, reportId, reportToken, dataPoints[i:j], dpByLabelBatch)
+	}
+}
+
+func PublishDataPointsBatch(host string, reportId string, reportToken string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) {
 	postBody, err := json.Marshal(PublishDataPointsRequest{
 		Data: &PublishDataPointsRequestData{
 			ReportUUID:        reportId,
