@@ -95,14 +95,21 @@ func PublishDataPoints(host string, reportId string, reportToken string, dataPoi
 			j = len(dataPoints)
 		}
 
-		dpByLabelBatch := make(map[string][]MetricDataPoint)
-		for k, v := range dataPointsByLabel {
-			if i < len(v) && j > len(v) {
-				dpByLabelBatch[k] = v[i:j]
-			}
-		}
+		PublishDataPointsBatch(host, reportId, reportToken, dataPoints[i:j], make(map[string][]MetricDataPoint))
+	}
 
-		PublishDataPointsBatch(host, reportId, reportToken, dataPoints[i:j], dpByLabelBatch)
+	for k, v := range dataPointsByLabel {
+		for i := 0; i < len(v); i += batch {
+			j := i + batch
+			if j > len(v) {
+				j = len(v)
+			}
+
+			dpByLabelBatch := make(map[string][]MetricDataPoint)
+			dpByLabelBatch[k] = v[i:j]
+
+			PublishDataPointsBatch(host, reportId, reportToken, []MetricDataPoint{}, dpByLabelBatch)
+		}
 	}
 }
 
