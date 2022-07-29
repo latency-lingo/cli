@@ -32,6 +32,8 @@ type GroupedResult struct {
 	DataPointsByLabel map[string][]internal.MetricDataPoint
 }
 
+const MaxFileSize = 1000 * 1000 * 100 // 100MB
+
 var (
 	dataFile    string
 	reportLabel string
@@ -121,6 +123,8 @@ func parseDataFile(file string) []internal.UngroupedMetricDataPoint {
 		rows []internal.UngroupedMetricDataPoint
 	)
 
+	validateFile(file)
+
 	f, err := os.Open(file)
 	if err != nil {
 		log.Fatal(err)
@@ -153,6 +157,18 @@ func parseDataFile(file string) []internal.UngroupedMetricDataPoint {
 	})
 
 	return rows
+}
+
+func validateFile(file string) {
+	info, err := os.Stat(file)
+	if os.IsNotExist(err) {
+		log.Fatalln("File", file, "does not exist")
+		return
+	}
+
+	if info.Size() > MaxFileSize {
+		log.Fatalln("File", file, "is too large. There is currently a 100MB limit, but please reach out with your use case.")
+	}
 }
 
 func groupDataPoints(ungrouped []internal.UngroupedMetricDataPoint) GroupedResult {
