@@ -98,6 +98,7 @@ func PublishDataPoints(host string, reportId string, reportToken string, dataPoi
 		PublishDataPointsBatch(host, reportId, reportToken, dataPoints[i:j], make(map[string][]MetricDataPoint))
 	}
 
+	// TODO(bobsin): combine batches if less than 200
 	for k, v := range dataPointsByLabel {
 		for i := 0; i < len(v); i += batch {
 			j := i + batch
