@@ -28,8 +28,8 @@ possible_latency_ranges = [
   *5.times.map { (0..0.5) },
   *15.times.map { (0.5..2) },
   *10.times.map { (2..5) },
-  *5.times.map { (5..10) },
-  *5.times.map { (10..20) },
+  *2.times.map { (5..10) },
+  *2.times.map { (10..20) },
 ]
 
 labels = label_count.to_i.times.map do |i|
@@ -57,7 +57,7 @@ CSV.open(output_filename, "wb") do |csv|
 
         # TODO(bobsin): introduce error rate
         # TODO(bobsin): introduce thread ramp up time
-        csv << [(thread_timestamps[i].to_f * 1000).round, simulated_latency_ms, label.name, 200, "OK", "Thread-#{i}", "", true, "", rand(5000..10000), rand(500..1500), 1, 19, "", 0, 2, 794]
+        csv << [(thread_timestamps[i].to_f * 1000).round, simulated_latency_ms, label.name, 200, "OK", "Thread-#{i}", "", true, "", rand(5000..10000), rand(500..1500), 1, thread_count, "", 0, 2, 794]
 
         if thread_label_idxs[i] == labels.length - 1
           thread_label_idxs[i] = 0
