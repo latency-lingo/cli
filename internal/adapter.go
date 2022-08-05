@@ -26,12 +26,13 @@ type Latencies struct {
 }
 
 type MetricDataPoint struct {
-	Label        string     `json:"label"`
-	Requests     uint64     `json:"requests"`
-	Failures     uint64     `json:"failures"`
-	VirtualUsers uint64     `json:"virtualUsers"`
-	TimeStamp    uint64     `json:"timeStamp"`
-	Latencies    *Latencies `json:"latencies"`
+	Label                string `json:"label"`
+	Requests             uint64 `json:"requests"`
+	Failures             uint64 `json:"failures"`
+	VirtualUsers         uint64 `json:"virtualUsers"`
+	TimeStamp            uint64 `json:"timeStamp"`
+	TimeAggregationLevel TimeAggregationLevel
+	Latencies            *Latencies `json:"latencies"`
 }
 
 type UngroupedMetricDataPoint struct {

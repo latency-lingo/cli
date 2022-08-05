@@ -5,34 +5,12 @@ Copyright © 2022 Anthony Bobsin anthony.bobsin.dev@gmail.com
 package cmd
 
 import (
-	"encoding/csv"
-	"io"
 	"log"
-	"os"
-	"sort"
 
 	"github.com/AnthonyBobsin/latency-lingo-cli/internal"
 	"github.com/getsentry/sentry-go"
-	"github.com/montanaflynn/stats"
 	"github.com/spf13/cobra"
 )
-
-type GlobalDataCounter struct {
-	Label           string
-	TotalRequests   uint64
-	TotalFailures   uint64
-	MaxVirtualUsers uint64
-	RawLatencies    []float64
-}
-
-type LabeledDataCounter = map[string]*GlobalDataCounter
-
-type GroupedResult struct {
-	DataPoints        []internal.MetricDataPoint
-	DataPointsByLabel map[string][]internal.MetricDataPoint
-}
-
-const MaxFileSize = 1000 * 1000 * 100 // 100MB
 
 var (
 	dataFile    string
@@ -42,9 +20,6 @@ var (
 	apiKey      string
 	version     string
 )
-
-var globalDataCounter = &GlobalDataCounter{}
-var labeledDataCounter = make(map[string]*GlobalDataCounter)
 
 // publishCmd represents the publish command
 var publishCmd = &cobra.Command{
@@ -94,8 +69,8 @@ func init() {
 
 func publishV1() string {
 	var reportToken string
-	rows := parseDataFile(dataFile)
-	groupedResult := groupDataPoints(rows)
+	rows := internal.ParseDataFile(dataFile)
+	groupedResult := internal.GroupDataPoints(rows, internal.FiveSeconds)
 
 	if reportUuid == "" {
 		reportResponse := internal.CreateReport(
@@ -119,11 +94,9 @@ func publishV1() string {
 	)
 	log.Println("Published", len(groupedResult.DataPoints), "data points")
 
-	metricSummary := calculateMetricSummary(globalDataCounter, "")
-	metricSummaryByLabel := make(map[string]internal.MetricSummary)
-	for label, counter := range labeledDataCounter {
-		metricSummaryByLabel[label] = calculateMetricSummary(counter, label)
-	}
+	metricSummary := internal.CalculateMetricSummaryOverall()
+	metricSummaryByLabel := internal.CalculateMetricSummaryByLabel()
+
 	internal.PublishMetricSummary(
 		hostName(environment),
 		reportUuid,
@@ -137,8 +110,8 @@ func publishV1() string {
 }
 
 func publishV2() string {
-	rows := parseDataFile(dataFile)
-	groupedResult := groupDataPoints(rows)
+	rows := internal.ParseDataFile(dataFile)
+	groupedResult := internal.GroupAllDataPoints(rows)
 
 	testRun := internal.CreateTestRun(hostName(environment), apiKey, reportLabel)
 	runId := testRun.ID
@@ -156,11 +129,8 @@ func publishV2() string {
 	// TODO(bobsin): make this accurate to include labeled and time granularity
 	log.Println("Published", len(groupedResult.DataPoints), "data points")
 
-	metricSummary := calculateMetricSummary(globalDataCounter, "")
-	metricSummaryByLabel := make(map[string]internal.MetricSummary)
-	for label, counter := range labeledDataCounter {
-		metricSummaryByLabel[label] = calculateMetricSummary(counter, label)
-	}
+	metricSummary := internal.CalculateMetricSummaryOverall()
+	metricSummaryByLabel := internal.CalculateMetricSummaryByLabel()
 
 	internal.CreateTestSummaryMetrics(
 		hostName(environment),
@@ -172,195 +142,6 @@ func publishV2() string {
 	log.Println("Published metric summary")
 
 	return runId
-}
-
-func parseDataFile(file string) []internal.UngroupedMetricDataPoint {
-	var (
-		rows []internal.UngroupedMetricDataPoint
-	)
-
-	validateFile(file)
-
-	f, err := os.Open(file)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer f.Close()
-
-	csvReader := csv.NewReader(f)
-
-	// skip header
-	if _, err := csvReader.Read(); err != nil {
-		log.Fatal(err)
-		panic(err)
-	}
-
-	for {
-		rec, err := csvReader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		rows = append(rows, internal.TranslateJmeterRow((rec)))
-	}
-
-	sort.SliceStable(rows, func(i int, j int) bool {
-		return rows[i].TimeStamp < rows[j].TimeStamp
-	})
-
-	return rows
-}
-
-func validateFile(file string) {
-	info, err := os.Stat(file)
-	if os.IsNotExist(err) {
-		log.Fatalln("File", file, "does not exist")
-		return
-	}
-
-	if info.Size() > MaxFileSize {
-		log.Fatalln("File", file, "is too large. There is currently a 100MB limit, but please reach out with your use case.")
-	}
-}
-
-func groupDataPoints(ungrouped []internal.UngroupedMetricDataPoint) GroupedResult {
-	var (
-		startTime         uint64
-		dataPoints        []internal.MetricDataPoint
-		dataPointsByLabel map[string][]internal.MetricDataPoint
-		batch             []internal.UngroupedMetricDataPoint
-		batchByLabel      map[string][]internal.UngroupedMetricDataPoint
-	)
-	dataPointsByLabel = make(map[string][]internal.MetricDataPoint)
-	batchByLabel = make(map[string][]internal.UngroupedMetricDataPoint)
-
-	for _, dp := range ungrouped {
-		if startTime == 0 {
-			// init start time to last 5s interval from time stamp
-			startTime = calculateIntervalFloor(dp.TimeStamp)
-		}
-
-		if dp.TimeStamp-startTime > 5 {
-			dataPoints = append(dataPoints, groupDataPointBatch(batch, startTime, ""))
-			mergeDataPointsByLabel(dataPointsByLabel, batchByLabel, startTime)
-			batch = nil
-			batchByLabel = map[string][]internal.UngroupedMetricDataPoint{}
-			startTime = 0
-		}
-
-		batch = append(batch, dp)
-		batchByLabel[dp.Label] = append(batchByLabel[dp.Label], dp)
-	}
-
-	if len(batch) > 0 {
-		startTime = calculateIntervalFloor(batch[0].TimeStamp)
-		dataPoints = append(dataPoints, groupDataPointBatch(batch, startTime, ""))
-		mergeDataPointsByLabel(dataPointsByLabel, batchByLabel, startTime)
-	}
-
-	return GroupedResult{
-		DataPoints:        dataPoints,
-		DataPointsByLabel: dataPointsByLabel,
-	}
-}
-
-func mergeDataPointsByLabel(existing map[string][]internal.MetricDataPoint, batch map[string][]internal.UngroupedMetricDataPoint, startTime uint64) {
-	for label, dataPoints := range batch {
-		existing[label] = append(existing[label], groupDataPointBatch(dataPoints, startTime, label))
-	}
-}
-
-func groupDataPointBatch(ungrouped []internal.UngroupedMetricDataPoint, startTime uint64, label string) internal.MetricDataPoint {
-	var (
-		latencies []float64
-		grouped   internal.MetricDataPoint
-	)
-
-	grouped.TimeStamp = startTime
-
-	for _, dp := range ungrouped {
-		if label != "" {
-			grouped.Label = label
-		}
-
-		grouped.Requests += dp.Requests
-		grouped.Failures += dp.Failures
-
-		if dp.VirtualUsers > grouped.VirtualUsers {
-			grouped.VirtualUsers = dp.VirtualUsers
-		}
-
-		latencies = append(latencies, float64(dp.Latency))
-	}
-
-	grouped.Latencies = calculateLatencySummary(latencies)
-
-	if label != "" {
-		updateGlobalCounter(globalDataCounter, grouped, latencies)
-		if labeledDataCounter[label] == nil {
-			labeledDataCounter[label] = &GlobalDataCounter{}
-		}
-
-		updateGlobalCounter(labeledDataCounter[label], grouped, latencies)
-	}
-
-	return grouped
-}
-
-func updateGlobalCounter(counter *GlobalDataCounter, metric internal.MetricDataPoint, latencies []float64) {
-	counter.TotalRequests += metric.Requests
-	counter.TotalFailures += metric.Failures
-	if metric.VirtualUsers > counter.MaxVirtualUsers {
-		counter.MaxVirtualUsers = metric.VirtualUsers
-	}
-	counter.RawLatencies = append(counter.RawLatencies, latencies...)
-}
-
-func calculateLatencySummary(latencies []float64) *internal.Latencies {
-	summary := internal.Latencies{}
-	summary.AvgMs, _ = stats.Mean(latencies)
-	summary.MaxMs, _ = stats.Max(latencies)
-	summary.MinMs, _ = stats.Min(latencies)
-	summary.P50Ms, _ = stats.Percentile(latencies, 50)
-	summary.P75Ms, _ = stats.Percentile(latencies, 75)
-	summary.P90Ms, _ = stats.Percentile(latencies, 90)
-	summary.P95Ms, _ = stats.Percentile(latencies, 95)
-	summary.P99Ms, _ = stats.Percentile(latencies, 99)
-
-	summary.AvgMs, _ = stats.Round(summary.AvgMs, 2)
-	summary.MaxMs, _ = stats.Round(summary.MaxMs, 2)
-	summary.MinMs, _ = stats.Round(summary.MinMs, 2)
-	summary.P50Ms, _ = stats.Round(summary.P50Ms, 2)
-	summary.P75Ms, _ = stats.Round(summary.P75Ms, 2)
-	summary.P90Ms, _ = stats.Round(summary.P90Ms, 2)
-	summary.P95Ms, _ = stats.Round(summary.P95Ms, 2)
-	summary.P99Ms, _ = stats.Round(summary.P99Ms, 2)
-
-	return &summary
-}
-
-func calculateMetricSummary(globalDataCounter *GlobalDataCounter, label string) internal.MetricSummary {
-	summary := internal.MetricSummary{}
-
-	if label != "" {
-		summary.Label = label
-	}
-
-	summary.TotalRequests = globalDataCounter.TotalRequests
-	summary.TotalFailures = globalDataCounter.TotalFailures
-	summary.MaxVirtualUsers = globalDataCounter.MaxVirtualUsers
-	summary.Latencies = calculateLatencySummary(globalDataCounter.RawLatencies)
-
-	return summary
-}
-
-func calculateIntervalFloor(timeStamp uint64) uint64 {
-	difference := timeStamp % 60 % 5
-	return timeStamp - difference
 }
 
 func hostName(env string) string {

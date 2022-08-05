@@ -65,6 +65,34 @@ type NewChartMetric struct {
 	LatencyP99Ms         float64 `json:"latencyP99Ms"`
 }
 
+type TimeAggregationLevel string
+
+const (
+	Undefined     TimeAggregationLevel = ""
+	FiveSeconds   TimeAggregationLevel = "5s"
+	ThirtySeconds TimeAggregationLevel = "30s"
+	OneMinute     TimeAggregationLevel = "1m"
+	FiveMinutes   TimeAggregationLevel = "5m"
+	ThirtyMinutes TimeAggregationLevel = "30m"
+)
+
+func (t TimeAggregationLevel) Seconds() uint64 {
+	switch t {
+	case FiveSeconds:
+		return 5
+	case ThirtySeconds:
+		return 30
+	case OneMinute:
+		return 60
+	case FiveMinutes:
+		return 300
+	case ThirtyMinutes:
+		return 1800
+	default:
+		return 5
+	}
+}
+
 type CreateTestChartMetricsRequestData struct {
 	Token   string           `json:"token"`
 	Metrics []NewChartMetric `json:"metrics"`
@@ -219,7 +247,7 @@ func mapMetricDataPoints(dataPoints []MetricDataPoint) []NewChartMetric {
 func mapMetricDataPoint(dp MetricDataPoint) NewChartMetric {
 	return NewChartMetric{
 		Timestamp:            dp.TimeStamp,
-		TimeAggregationLevel: "5s",
+		TimeAggregationLevel: string(dp.TimeAggregationLevel),
 		OperationName:        dp.Label,
 		RequestCount:         dp.Requests,
 		FailureCount:         dp.Failures,
