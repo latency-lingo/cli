@@ -10,7 +10,6 @@ import (
 	"log"
 	"os"
 	"sort"
-	"time"
 
 	"github.com/AnthonyBobsin/latency-lingo-cli/internal"
 	"github.com/getsentry/sentry-go"
@@ -39,9 +38,9 @@ var (
 	dataFile    string
 	reportLabel string
 	reportUuid  string
-	reportToken string
 	environment string
 	apiKey      string
+	version     string
 )
 
 var globalDataCounter = &GlobalDataCounter{}
@@ -57,56 +56,27 @@ test results dataset.`,
 		initSentryScope()
 
 		if environment != "production" && environment != "development" {
-			log.Fatalln("User specified unknown environment", environment)
+			log.Fatalln("Unknown environment", environment)
 		}
 
 		log.Println("Parsing provided file", dataFile)
+		var reportPath string
 
-		if reportUuid == "" {
-			reportResponse := internal.CreateReport(
-				hostName(environment),
-				apiKey,
-				reportLabel,
-			).Result.Data
-			reportUuid = reportResponse.ID
-			reportToken = reportResponse.WriteToken
-			log.Println("Created a new report")
+		if version == "v1" {
+			reportId := publishV1()
+			reportPath = "reports/" + reportId
+		} else if version == "v2" {
+			runId := publishV2()
+			reportPath = "test-runs/" + runId
+		} else {
+			log.Fatalln("Unknown version", version)
 		}
-
-		log.Println("Using report", reportUuid)
-		time.Sleep(2000 * time.Millisecond)
-
-		rows := parseDataFile(dataFile)
-		groupedResult := groupDataPoints(rows)
-
-		internal.PublishDataPoints(
-			hostName(environment),
-			reportUuid,
-			reportToken,
-			groupedResult.DataPoints,
-			groupedResult.DataPointsByLabel,
-		)
-		log.Println("Published", len(groupedResult.DataPoints), "data points")
-
-		metricSummary := calculateMetricSummary(globalDataCounter, "")
-		metricSummaryByLabel := make(map[string]internal.MetricSummary)
-		for label, counter := range labeledDataCounter {
-			metricSummaryByLabel[label] = calculateMetricSummary(counter, label)
-		}
-		internal.PublishMetricSummary(
-			hostName(environment),
-			reportUuid,
-			reportToken,
-			metricSummary,
-			metricSummaryByLabel,
-		)
-		log.Println("Published metric summary")
 
 		switch environment {
 		case "production":
-			log.Printf("Report can be found at https://latencylingo.com/reports/%s", reportUuid)
+			log.Printf("Report can be found at https://latencylingo.com/%s", reportPath)
 		case "development":
-			log.Printf("Report can be found at http://localhost:3000/reports/%s", reportUuid)
+			log.Printf("Report can be found at http://localhost:3000/%s", reportPath)
 		}
 	},
 }
@@ -118,7 +88,90 @@ func init() {
 	publishCmd.Flags().StringVar(&reportLabel, "label", "Test Report", "Label to use when creating a new report.")
 	publishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
 	publishCmd.Flags().StringVar(&apiKey, "api-key", "", "API key to associate this report with a user.")
+	publishCmd.Flags().StringVar(&version, "version", "v1", "Version of the publish command to use. Supported values: v1, v2.")
 	publishCmd.MarkFlagRequired("file")
+}
+
+func publishV1() string {
+	var reportToken string
+	rows := parseDataFile(dataFile)
+	groupedResult := groupDataPoints(rows)
+
+	if reportUuid == "" {
+		reportResponse := internal.CreateReport(
+			hostName(environment),
+			apiKey,
+			reportLabel,
+		).Result.Data
+		reportUuid = reportResponse.ID
+		reportToken = reportResponse.WriteToken
+		log.Println("Created a new report")
+	}
+
+	log.Println("Using report", reportUuid)
+
+	internal.PublishDataPoints(
+		hostName(environment),
+		reportUuid,
+		reportToken,
+		groupedResult.DataPoints,
+		groupedResult.DataPointsByLabel,
+	)
+	log.Println("Published", len(groupedResult.DataPoints), "data points")
+
+	metricSummary := calculateMetricSummary(globalDataCounter, "")
+	metricSummaryByLabel := make(map[string]internal.MetricSummary)
+	for label, counter := range labeledDataCounter {
+		metricSummaryByLabel[label] = calculateMetricSummary(counter, label)
+	}
+	internal.PublishMetricSummary(
+		hostName(environment),
+		reportUuid,
+		reportToken,
+		metricSummary,
+		metricSummaryByLabel,
+	)
+	log.Println("Published metric summary")
+
+	return reportUuid
+}
+
+func publishV2() string {
+	rows := parseDataFile(dataFile)
+	groupedResult := groupDataPoints(rows)
+
+	testRun := internal.CreateTestRun(hostName(environment), apiKey, reportLabel)
+	runId := testRun.ID
+	runToken := testRun.WriteToken
+
+	log.Println("Created a new test run with ID", runId)
+
+	internal.CreateTestChartMetrics(
+		hostName(environment),
+		runToken,
+		groupedResult.DataPoints,
+		groupedResult.DataPointsByLabel,
+	)
+
+	// TODO(bobsin): make this accurate to include labeled and time granularity
+	log.Println("Published", len(groupedResult.DataPoints), "data points")
+
+	metricSummary := calculateMetricSummary(globalDataCounter, "")
+	metricSummaryByLabel := make(map[string]internal.MetricSummary)
+	for label, counter := range labeledDataCounter {
+		metricSummaryByLabel[label] = calculateMetricSummary(counter, label)
+	}
+
+	internal.CreateTestSummaryMetrics(
+		hostName(environment),
+		runToken,
+		metricSummary,
+		metricSummaryByLabel,
+	)
+
+	log.Println("Published metric summary")
+
+	return runId
 }
 
 func parseDataFile(file string) []internal.UngroupedMetricDataPoint {
