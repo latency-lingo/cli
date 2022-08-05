@@ -19,6 +19,7 @@ type GroupedResult struct {
 
 var globalDataCounter = &GlobalDataCounter{}
 var labeledDataCounter = make(map[string]*GlobalDataCounter)
+var globalCountersFull = false
 var allTimeAggregationLevels = []TimeAggregationLevel{
 	FiveSeconds,
 	ThirtySeconds,
@@ -38,6 +39,7 @@ func GroupAllDataPoints(ungrouped []UngroupedMetricDataPoint) GroupedResult {
 		for label, dataPoints := range localResult.DataPointsByLabel {
 			groupedResult.DataPointsByLabel[label] = append(groupedResult.DataPointsByLabel[label], dataPoints...)
 		}
+		globalCountersFull = true
 	}
 
 	return groupedResult
@@ -129,6 +131,10 @@ func groupDataPointBatch(ungrouped []UngroupedMetricDataPoint, startTime uint64,
 }
 
 func updateGlobalCounter(counter *GlobalDataCounter, metric MetricDataPoint, latencies []float64) {
+	if globalCountersFull {
+		return
+	}
+
 	counter.TotalRequests += metric.Requests
 	counter.TotalFailures += metric.Failures
 	if metric.VirtualUsers > counter.MaxVirtualUsers {
