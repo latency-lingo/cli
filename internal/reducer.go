@@ -195,6 +195,6 @@ func calculateMetricSummary(globalDataCounter *GlobalDataCounter, label string) 
 }
 
 func calculateIntervalFloor(timeStamp uint64, timeAggSeconds uint64) uint64 {
-	difference := timeStamp % 60 % timeAggSeconds
+	difference := timeStamp % timeAggSeconds
 	return timeStamp - difference
 }
