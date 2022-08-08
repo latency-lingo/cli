@@ -37,12 +37,16 @@ test results dataset.`,
 		log.Println("Parsing provided file", dataFile)
 		var reportPath string
 
-		if version == "v1" {
-			reportId := publishV1()
-			reportPath = "reports/" + reportId
-		} else if version == "v2" {
+		if version == "v2" {
+			if apiKey == "" {
+				log.Fatalln("API key is required for version 2. Please sign up and provide an API key using the --api-key flag.")
+			}
+
 			runId := publishV2()
 			reportPath = "test-runs/" + runId
+		} else if version == "v1" {
+			reportId := publishV1()
+			reportPath = "reports/" + reportId
 		} else {
 			log.Fatalln("Unknown version", version)
 		}
@@ -113,7 +117,7 @@ func publishV2() string {
 	rows := internal.ParseDataFile(dataFile)
 	groupedResult := internal.GroupAllDataPoints(rows)
 
-	testRun := internal.CreateTestRun(hostName(environment), apiKey, reportLabel)
+	testRun := internal.CreateTestRun(hostName(environment), apiKey, reportLabel, rows[0].TimeStamp, rows[len(rows)-1].TimeStamp)
 	runId := testRun.ID
 	runToken := testRun.WriteToken
 

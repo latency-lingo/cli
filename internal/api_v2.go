@@ -13,6 +13,8 @@ type CreateTestRunRequestData struct {
 	ScenarioName string `json:"scenarioName"`
 	RunName      string `json:"runName"`
 	Environment  string `json:"environment"`
+	StartedAt    uint64 `json:"startedAt"`
+	StoppedAt    uint64 `json:"stoppedAt"`
 }
 
 type CreateTestRunRequest struct {
@@ -111,11 +113,13 @@ type CreateTestSummaryMetricsRequest struct {
 	Data *CreateTestSummaryMetricsRequestData `json:"data"`
 }
 
-func CreateTestRun(host string, apiKey string, name string) TestRun {
+func CreateTestRun(host string, apiKey string, name string, startedAt uint64, stoppedAt uint64) TestRun {
 	postBody, err := json.Marshal(CreateTestRunRequest{
 		Data: &CreateTestRunRequestData{
 			ApiKey:       apiKey,
 			ScenarioName: name,
+			StartedAt:    startedAt,
+			StoppedAt:    stoppedAt,
 		},
 	})
 
