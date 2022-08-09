@@ -4,6 +4,8 @@ import (
 	"log"
 	"strconv"
 	"time"
+
+	"github.com/getsentry/sentry-go"
 )
 
 type MetricSummary struct {
@@ -103,6 +105,7 @@ func ParseTimeStamp(timeStamp string) uint64 {
 		}
 	}
 
-	log.Fatalf("Failed to parse timeStamp: %s", timeStamp)
+	sentry.CaptureMessage("unable to parse timestamp: " + timeStamp)
+	log.Fatalf("unable to parse timestamp: %s", timeStamp)
 	return 0
 }

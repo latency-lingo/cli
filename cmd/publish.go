@@ -9,7 +9,6 @@ import (
 
 	"github.com/AnthonyBobsin/latency-lingo-cli/internal"
 	"github.com/getsentry/sentry-go"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +31,7 @@ test results dataset.`,
 		initSentryScope()
 
 		if environment != "production" && environment != "development" {
-			log.Fatalln("Unknown environment", environment)
+			log.Fatalln("Received unknown environment", environment)
 		}
 
 		log.Println("Parsing provided file", dataFile)
@@ -46,7 +45,7 @@ test results dataset.`,
 			runId, err := publishV2()
 			if err != nil {
 				sentry.CaptureException(err)
-				log.Printf("Error when publishing test run: %v", err)
+				log.Printf("Failed to publish: %v", err)
 				return
 			}
 			reportPath = "test-runs/" + runId
@@ -54,7 +53,7 @@ test results dataset.`,
 			reportId, err := publishV1()
 			if err != nil {
 				sentry.CaptureException(err)
-				log.Printf("Error when publishing report: %v", err)
+				log.Printf("Failed to publish: %v", err)
 				return
 			}
 			reportPath = "reports/" + reportId
@@ -85,7 +84,7 @@ func init() {
 func publishV1() (string, error) {
 	rows, err := internal.ParseDataFile(dataFile)
 	if err != nil {
-		return "", errors.Errorf("error when parsing data-file: %w", err)
+		return "", err
 	}
 
 	groupedResult := internal.GroupDataPoints(rows, internal.FiveSeconds)
@@ -140,7 +139,7 @@ func publishV1() (string, error) {
 func publishV2() (string, error) {
 	rows, err := internal.ParseDataFile(dataFile)
 	if err != nil {
-		return "", errors.Errorf("error when parsing data-file: %w", err)
+		return "", err
 	}
 	groupedResult := internal.GroupAllDataPoints(rows)
 

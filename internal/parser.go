@@ -2,10 +2,12 @@ package internal
 
 import (
 	"encoding/csv"
+	"fmt"
 	"io"
-	"log"
 	"os"
 	"sort"
+
+	"github.com/pkg/errors"
 )
 
 const MaxFileSize = 1000 * 1000 * 100 // 100MB
@@ -15,10 +17,13 @@ func ParseDataFile(file string) ([]UngroupedMetricDataPoint, error) {
 		rows []UngroupedMetricDataPoint
 	)
 
-	validateFile(file)
+	if err := validateFile(file); err != nil {
+		return nil, err
+	}
+
 	f, err := os.Open(file)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("cannot open file %s: %w", file, err)
 	}
 
 	defer f.Close()
@@ -26,7 +31,7 @@ func ParseDataFile(file string) ([]UngroupedMetricDataPoint, error) {
 	csvReader := csv.NewReader(f)
 	if _, err := csvReader.Read(); err != nil {
 		// TODO(bobsin): validate default header config
-		return nil, err
+		return nil, errors.Errorf("cannot read file %s: %w", file, err)
 	}
 
 	for {
@@ -34,7 +39,7 @@ func ParseDataFile(file string) ([]UngroupedMetricDataPoint, error) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return nil, err
+			return nil, errors.Errorf("cannot read file %s: %w", file, err)
 		}
 		rows = append(rows, TranslateJmeterRow(rec))
 	}
@@ -46,14 +51,15 @@ func ParseDataFile(file string) ([]UngroupedMetricDataPoint, error) {
 	return rows, nil
 }
 
-func validateFile(file string) {
+func validateFile(file string) error {
 	info, err := os.Stat(file)
 	if os.IsNotExist(err) {
-		log.Fatalln("File", file, "does not exist")
-		return
+		return fmt.Errorf("file %s does not exist", file)
 	}
 
 	if info.Size() > MaxFileSize {
-		log.Fatalln("File", file, "is too large. There is currently a 100MB limit, but please reach out with your use case.")
+		return fmt.Errorf("file %s is too large. The current limit is 100MB, but please reach out with your use case", file)
 	}
+
+	return nil
 }
