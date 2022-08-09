@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"net/http"
+
+	"github.com/pkg/errors"
 )
 
 type CreateTestRunRequestData struct {
@@ -113,7 +114,7 @@ type CreateTestSummaryMetricsRequest struct {
 	Data *CreateTestSummaryMetricsRequestData `json:"data"`
 }
 
-func CreateTestRun(host string, apiKey string, name string, startedAt uint64, stoppedAt uint64) TestRun {
+func CreateTestRun(host string, apiKey string, name string, startedAt uint64, stoppedAt uint64) (*TestRun, error) {
 	postBody, err := json.Marshal(CreateTestRunRequest{
 		Data: &CreateTestRunRequestData{
 			ApiKey:       apiKey,
@@ -124,34 +125,34 @@ func CreateTestRun(host string, apiKey string, name string, startedAt uint64, st
 	})
 
 	if err != nil {
-		log.Fatalf("An error occurred while serializing request body %v", err)
+		return nil, errors.Errorf("[test.createRun] failed to build request body: %w", err)
 	}
 
 	resp, err := http.Post(host+"/v2/test.createRun", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
-		log.Fatalf("An Error Occured %v", err)
+		return nil, errors.Errorf("[test.createRun] request failed: %w", err)
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll((resp.Body))
 	if err != nil {
-		log.Fatalln(err)
+		return nil, errors.Errorf("[test.createRun] failed to parse response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalln("Request failed with:", string(body))
+		return nil, errors.Errorf("[test.createRun] request failed: %s", string(body))
 	}
 
 	var parsed CreateTestRunResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		log.Println("Can not unmarshal JSON")
+		return nil, errors.Errorf("[test.createRun] failed to parse response: %w", err)
 	}
 
-	return parsed.Result.Data
+	return &parsed.Result.Data, nil
 }
 
-func CreateTestChartMetrics(host string, token string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) {
+func CreateTestChartMetrics(host string, token string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) (bool, error) {
 	batch := 200
 	for i := 0; i < len(dataPoints); i += batch {
 		j := i + batch
@@ -159,7 +160,9 @@ func CreateTestChartMetrics(host string, token string, dataPoints []MetricDataPo
 			j = len(dataPoints)
 		}
 
-		CreateTestChartMetricsBatch(host, token, dataPoints[i:j])
+		if _, err := CreateTestChartMetricsBatch(host, token, dataPoints[i:j]); err != nil {
+			return false, err
+		}
 	}
 
 	// TODO(bobsin): combine batches if less than 200
@@ -170,12 +173,16 @@ func CreateTestChartMetrics(host string, token string, dataPoints []MetricDataPo
 				j = len(v)
 			}
 
-			CreateTestChartMetricsBatch(host, token, v[i:j])
+			if _, err := CreateTestChartMetricsBatch(host, token, v[i:j]); err != nil {
+				return false, err
+			}
 		}
 	}
+
+	return true, nil
 }
 
-func CreateTestChartMetricsBatch(host string, token string, dataPoints []MetricDataPoint) {
+func CreateTestChartMetricsBatch(host string, token string, dataPoints []MetricDataPoint) (bool, error) {
 	postBody, err := json.Marshal(CreateTestChartMetricsRequest{
 		Data: &CreateTestChartMetricsRequestData{
 			Token:   token,
@@ -184,27 +191,29 @@ func CreateTestChartMetricsBatch(host string, token string, dataPoints []MetricD
 	})
 
 	if err != nil {
-		log.Fatalf("An error occurred while serializing request body %v", err)
+		return false, errors.Errorf("[test.createChartMetrics] failed to build request body: %w", err)
 	}
 
 	resp, err := http.Post(host+"/v2/test.createChartMetrics", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
-		log.Fatalf("An Error Occured %v", err)
+		return false, errors.Errorf("[test.createChartMetrics] request failed: %w", err)
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll((resp.Body))
 	if err != nil {
-		log.Fatalln(err)
+		return false, errors.Errorf("[test.createChartMetrics] failed to parse response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalln("Request failed with:", string(body))
+		return false, errors.Errorf("[test.createChartMetrics] request failed: %s", string(body))
 	}
+
+	return true, nil
 }
 
-func CreateTestSummaryMetrics(host string, token string, metrics MetricSummary, metricsByLabel map[string]MetricSummary) {
+func CreateTestSummaryMetrics(host string, token string, metrics MetricSummary, metricsByLabel map[string]MetricSummary) (bool, error) {
 	var mappedMetrics []NewMetric
 
 	mappedMetrics = append(mappedMetrics, mapMetricSummary(metrics))
@@ -220,24 +229,26 @@ func CreateTestSummaryMetrics(host string, token string, metrics MetricSummary, 
 	})
 
 	if err != nil {
-		log.Fatalf("An error occurred while serializing request body %v", err)
+		return false, errors.Errorf("[test.createSummaryMetrics] failed to build request body: %w", err)
 	}
 
 	resp, err := http.Post(host+"/v2/test.createSummaryMetrics", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
-		log.Fatalf("An Error Occured %v", err)
+		return false, errors.Errorf("[test.createSummaryMetrics] request failed: %w", err)
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll((resp.Body))
 	if err != nil {
-		log.Fatalln(err)
+		return false, errors.Errorf("[test.createSummaryMetrics] request failed: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalln("Request failed with:", string(body))
+		return false, errors.Errorf("[test.createSummaryMetrics] request failed: %s", string(body))
 	}
+
+	return true, nil
 }
 
 func mapMetricDataPoints(dataPoints []MetricDataPoint) []NewChartMetric {

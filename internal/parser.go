@@ -10,6 +10,42 @@ import (
 
 const MaxFileSize = 1000 * 1000 * 100 // 100MB
 
+func ParseDataFileE(file string) ([]UngroupedMetricDataPoint, error) {
+	var (
+		rows []UngroupedMetricDataPoint
+	)
+
+	validateFile(file)
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+
+	defer f.Close()
+
+	csvReader := csv.NewReader(f)
+	if _, err := csvReader.Read(); err != nil {
+		// TODO(bobsin): validate default header config
+		return nil, err
+	}
+
+	for {
+		rec, err := csvReader.Read()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		rows = append(rows, TranslateJmeterRow(rec))
+	}
+
+	sort.SliceStable(rows, func(i int, j int) bool {
+		return rows[i].TimeStamp < rows[j].TimeStamp
+	})
+
+	return rows, nil
+}
+
 func ParseDataFile(file string) []UngroupedMetricDataPoint {
 	var (
 		rows []UngroupedMetricDataPoint

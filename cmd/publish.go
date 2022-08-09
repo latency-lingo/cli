@@ -9,6 +9,7 @@ import (
 
 	"github.com/AnthonyBobsin/latency-lingo-cli/internal"
 	"github.com/getsentry/sentry-go"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -42,7 +43,12 @@ test results dataset.`,
 				log.Fatalln("API key is required for version 2. Please sign up and provide an API key using the --api-key flag.")
 			}
 
-			runId := publishV2()
+			runId, err := publishV2()
+			if err != nil {
+				sentry.CaptureException(err)
+				log.Printf("Error when publishing test run: %v", err)
+				return
+			}
 			reportPath = "test-runs/" + runId
 		} else if version == "v1" {
 			reportId := publishV1()
@@ -113,39 +119,52 @@ func publishV1() string {
 	return reportUuid
 }
 
-func publishV2() string {
-	rows := internal.ParseDataFile(dataFile)
+func publishV2() (string, error) {
+	rows, err := internal.ParseDataFileE(dataFile)
+	if err != nil {
+		return "", errors.Errorf("error when parsing data-file: %w", err)
+	}
 	groupedResult := internal.GroupAllDataPoints(rows)
 
-	testRun := internal.CreateTestRun(hostName(environment), apiKey, reportLabel, rows[0].TimeStamp, rows[len(rows)-1].TimeStamp)
+	testRun, err := internal.CreateTestRun(hostName(environment), apiKey, reportLabel, rows[0].TimeStamp, rows[len(rows)-1].TimeStamp)
+	if err != nil {
+		return "", err
+	}
 	runId := testRun.ID
 	runToken := testRun.WriteToken
 
 	log.Println("Created a new test run with ID", runId)
 
-	internal.CreateTestChartMetrics(
+	if _, err := internal.CreateTestChartMetrics(
 		hostName(environment),
 		runToken,
 		groupedResult.DataPoints,
 		groupedResult.DataPointsByLabel,
-	)
+	); err != nil {
+		return "", err
+	}
 
-	// TODO(bobsin): make this accurate to include labeled and time granularity
-	log.Println("Published", len(groupedResult.DataPoints), "data points")
+	labeledDpCount := 0
+	for _, dp := range groupedResult.DataPointsByLabel {
+		labeledDpCount += len(dp)
+	}
+	log.Println("published", len(groupedResult.DataPoints)+labeledDpCount, "chart metric rows")
 
 	metricSummary := internal.CalculateMetricSummaryOverall()
 	metricSummaryByLabel := internal.CalculateMetricSummaryByLabel()
 
-	internal.CreateTestSummaryMetrics(
+	if _, err := internal.CreateTestSummaryMetrics(
 		hostName(environment),
 		runToken,
 		metricSummary,
 		metricSummaryByLabel,
-	)
+	); err != nil {
+		return "", err
+	}
 
-	log.Println("Published metric summary")
+	log.Println("published", len(metricSummaryByLabel)+1, "summary metric rows")
 
-	return runId
+	return runId, nil
 }
 
 func hostName(env string) string {
@@ -165,10 +184,16 @@ func initSentryScope() {
 	scope.SetTags(map[string]string{
 		"environment": environment,
 	})
+
+	var userRef string
+	if apiKey != "" {
+		userRef = apiKey[:6] + "..." + apiKey[len(apiKey)-6:]
+	}
+
 	// TODO(bobsin): add CLI version here
 	scope.SetContext("Flags", map[string]string{
 		"environment": environment,
-		"user":        apiKey,
+		"user":        userRef,
 		"dataFile":    dataFile,
 		"reportLabel": reportLabel,
 	})
