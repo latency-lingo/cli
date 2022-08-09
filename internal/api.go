@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"net/http"
+
+	"github.com/pkg/errors"
 )
 
 type CreateReportResponse struct {
@@ -51,7 +52,7 @@ type PublishMetricSummaryRequest struct {
 	Data PublishMetricSummaryRequestData `json:"data"`
 }
 
-func CreateReport(host string, apiKey string, label string) CreateReportResponse {
+func CreateReport(host string, apiKey string, label string) (*CreateReportResponse, error) {
 	postBody, err := json.Marshal(map[string]map[string]string{
 		"data": {
 			"apiKey": apiKey,
@@ -60,34 +61,34 @@ func CreateReport(host string, apiKey string, label string) CreateReportResponse
 	})
 
 	if err != nil {
-		log.Fatalf("An error occurred while serializing request body %v", err)
+		return nil, errors.Errorf("[reports.create] failed to build request body: %w", err)
 	}
 
 	resp, err := http.Post(host+"/v1/reports.create", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
-		log.Fatalf("An Error Occured %v", err)
+		return nil, errors.Errorf("[reports.create] request failed: %w", err)
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, errors.Errorf("[reports.create] failed to parse response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalln("Request failed with:", string(body))
+		return nil, errors.Errorf("[reports.create] request failed: %s", string(body))
 	}
 
 	var parsed CreateReportResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		log.Println("Can not unmarshal JSON")
+		return nil, errors.Errorf("[reports.create] failed to parse response: %w", err)
 	}
 
-	return parsed
+	return &parsed, nil
 }
 
-func PublishDataPoints(host string, reportId string, reportToken string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) {
+func PublishDataPoints(host string, reportId string, reportToken string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) (bool, error) {
 	batch := 200
 	for i := 0; i < len(dataPoints); i += batch {
 		j := i + batch
@@ -95,7 +96,9 @@ func PublishDataPoints(host string, reportId string, reportToken string, dataPoi
 			j = len(dataPoints)
 		}
 
-		PublishDataPointsBatch(host, reportId, reportToken, dataPoints[i:j], make(map[string][]MetricDataPoint))
+		if _, err := PublishDataPointsBatch(host, reportId, reportToken, dataPoints[i:j], make(map[string][]MetricDataPoint)); err != nil {
+			return false, err
+		}
 	}
 
 	// TODO(bobsin): combine batches if less than 200
@@ -109,12 +112,16 @@ func PublishDataPoints(host string, reportId string, reportToken string, dataPoi
 			dpByLabelBatch := make(map[string][]MetricDataPoint)
 			dpByLabelBatch[k] = v[i:j]
 
-			PublishDataPointsBatch(host, reportId, reportToken, []MetricDataPoint{}, dpByLabelBatch)
+			if _, err := PublishDataPointsBatch(host, reportId, reportToken, []MetricDataPoint{}, dpByLabelBatch); err != nil {
+				return false, err
+			}
 		}
 	}
+
+	return true, nil
 }
 
-func PublishDataPointsBatch(host string, reportId string, reportToken string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) {
+func PublishDataPointsBatch(host string, reportId string, reportToken string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) (bool, error) {
 	postBody, err := json.Marshal(PublishDataPointsRequest{
 		Data: &PublishDataPointsRequestData{
 			ReportUUID:        reportId,
@@ -126,27 +133,29 @@ func PublishDataPointsBatch(host string, reportId string, reportToken string, da
 	})
 
 	if err != nil {
-		log.Fatalf("An error occurred while serializing request body %v", err)
+		return false, errors.Errorf("[reports.updateData] failed to build request body: %w", err)
 	}
 
 	resp, err := http.Post(host+"/v1/reports.updateData", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
-		log.Fatalf("An Error Occured %v", err)
+		return false, errors.Errorf("[reports.updateData] request failed: %w", err)
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalln(err)
+		return false, errors.Errorf("[reports.updateData] failed to parse response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalln("Request failed with:", string(body))
+		return false, errors.Errorf("[reports.updateData] request failed: %s", string(body))
 	}
+
+	return true, nil
 }
 
-func PublishMetricSummary(host string, reportId string, reportToken string, metrics MetricSummary, metricsByLabel map[string]MetricSummary) {
+func PublishMetricSummary(host string, reportId string, reportToken string, metrics MetricSummary, metricsByLabel map[string]MetricSummary) (bool, error) {
 	postBody, err := json.Marshal(PublishMetricSummaryRequest{
 		Data: PublishMetricSummaryRequestData{
 			ReportUUID:     reportId,
@@ -157,22 +166,24 @@ func PublishMetricSummary(host string, reportId string, reportToken string, metr
 	})
 
 	if err != nil {
-		log.Fatalf("An error occurred while serializing request body %v", err)
+		return false, errors.Errorf("[reports.update] failed to build request body: %w", err)
 	}
 
 	resp, err := http.Post(host+"/v1/reports.update", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
-		log.Fatalf("An Error Occured %v", err)
+		return false, errors.Errorf("[reports.update] request failed: %w", err)
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalln(err)
+		return false, errors.Errorf("[reports.update] failed to parse response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalln("Request failed with:", string(body))
+		return false, errors.Errorf("[reports.update] request failed: %s", string(body))
 	}
+
+	return true, nil
 }

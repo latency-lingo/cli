@@ -51,7 +51,12 @@ test results dataset.`,
 			}
 			reportPath = "test-runs/" + runId
 		} else if version == "v1" {
-			reportId := publishV1()
+			reportId, err := publishV1()
+			if err != nil {
+				sentry.CaptureException(err)
+				log.Printf("Error when publishing report: %v", err)
+				return
+			}
 			reportPath = "reports/" + reportId
 		} else {
 			log.Fatalln("Unknown version", version)
@@ -77,50 +82,63 @@ func init() {
 	publishCmd.MarkFlagRequired("file")
 }
 
-func publishV1() string {
-	var reportToken string
-	rows := internal.ParseDataFile(dataFile)
+func publishV1() (string, error) {
+	rows, err := internal.ParseDataFile(dataFile)
+	if err != nil {
+		return "", errors.Errorf("error when parsing data-file: %w", err)
+	}
+
 	groupedResult := internal.GroupDataPoints(rows, internal.FiveSeconds)
 
+	var reportToken string
 	if reportUuid == "" {
-		reportResponse := internal.CreateReport(
-			hostName(environment),
-			apiKey,
-			reportLabel,
-		).Result.Data
-		reportUuid = reportResponse.ID
-		reportToken = reportResponse.WriteToken
+		if response, err := internal.CreateReport(hostName(environment), apiKey, reportLabel); err != nil {
+			return "", err
+		} else {
+			reportUuid = response.Result.Data.ID
+			reportToken = response.Result.Data.WriteToken
+		}
 		log.Println("Created a new report")
 	}
 
 	log.Println("Using report", reportUuid)
 
-	internal.PublishDataPoints(
+	if _, err := internal.PublishDataPoints(
 		hostName(environment),
 		reportUuid,
 		reportToken,
 		groupedResult.DataPoints,
 		groupedResult.DataPointsByLabel,
-	)
-	log.Println("Published", len(groupedResult.DataPoints), "data points")
+	); err != nil {
+		return "", err
+	}
+
+	labeledDpCount := 0
+	for _, dp := range groupedResult.DataPointsByLabel {
+		labeledDpCount += len(dp)
+	}
+	log.Println("published", len(groupedResult.DataPoints)+labeledDpCount, "data points")
 
 	metricSummary := internal.CalculateMetricSummaryOverall()
 	metricSummaryByLabel := internal.CalculateMetricSummaryByLabel()
 
-	internal.PublishMetricSummary(
+	if _, err := internal.PublishMetricSummary(
 		hostName(environment),
 		reportUuid,
 		reportToken,
 		metricSummary,
 		metricSummaryByLabel,
-	)
-	log.Println("Published metric summary")
+	); err != nil {
+		return "", err
+	}
 
-	return reportUuid
+	log.Println("Published", len(metricSummaryByLabel)+1, "metric summary rows")
+
+	return reportUuid, nil
 }
 
 func publishV2() (string, error) {
-	rows, err := internal.ParseDataFileE(dataFile)
+	rows, err := internal.ParseDataFile(dataFile)
 	if err != nil {
 		return "", errors.Errorf("error when parsing data-file: %w", err)
 	}
@@ -148,7 +166,7 @@ func publishV2() (string, error) {
 	for _, dp := range groupedResult.DataPointsByLabel {
 		labeledDpCount += len(dp)
 	}
-	log.Println("published", len(groupedResult.DataPoints)+labeledDpCount, "chart metric rows")
+	log.Println("Published", len(groupedResult.DataPoints)+labeledDpCount, "chart metric rows")
 
 	metricSummary := internal.CalculateMetricSummaryOverall()
 	metricSummaryByLabel := internal.CalculateMetricSummaryByLabel()
@@ -162,7 +180,7 @@ func publishV2() (string, error) {
 		return "", err
 	}
 
-	log.Println("published", len(metricSummaryByLabel)+1, "summary metric rows")
+	log.Println("Published", len(metricSummaryByLabel)+1, "summary metric rows")
 
 	return runId, nil
 }
