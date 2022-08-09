@@ -5,47 +5,21 @@ Copyright © 2022 Anthony Bobsin anthony.bobsin.dev@gmail.com
 package cmd
 
 import (
-	"encoding/csv"
-	"io"
 	"log"
-	"os"
-	"sort"
-	"time"
 
 	"github.com/AnthonyBobsin/latency-lingo-cli/internal"
 	"github.com/getsentry/sentry-go"
-	"github.com/montanaflynn/stats"
 	"github.com/spf13/cobra"
 )
-
-type GlobalDataCounter struct {
-	Label           string
-	TotalRequests   uint64
-	TotalFailures   uint64
-	MaxVirtualUsers uint64
-	RawLatencies    []float64
-}
-
-type LabeledDataCounter = map[string]*GlobalDataCounter
-
-type GroupedResult struct {
-	DataPoints        []internal.MetricDataPoint
-	DataPointsByLabel map[string][]internal.MetricDataPoint
-}
-
-const MaxFileSize = 1000 * 1000 * 100 // 100MB
 
 var (
 	dataFile    string
 	reportLabel string
 	reportUuid  string
-	reportToken string
 	environment string
 	apiKey      string
+	version     string
 )
-
-var globalDataCounter = &GlobalDataCounter{}
-var labeledDataCounter = make(map[string]*GlobalDataCounter)
 
 // publishCmd represents the publish command
 var publishCmd = &cobra.Command{
@@ -57,56 +31,41 @@ test results dataset.`,
 		initSentryScope()
 
 		if environment != "production" && environment != "development" {
-			log.Fatalln("User specified unknown environment", environment)
+			log.Fatalln("Received unknown environment", environment)
 		}
 
 		log.Println("Parsing provided file", dataFile)
+		var reportPath string
 
-		if reportUuid == "" {
-			reportResponse := internal.CreateReport(
-				hostName(environment),
-				apiKey,
-				reportLabel,
-			).Result.Data
-			reportUuid = reportResponse.ID
-			reportToken = reportResponse.WriteToken
-			log.Println("Created a new report")
+		if version == "v2" {
+			if apiKey == "" {
+				log.Fatalln("API key is required for version 2. Please sign up and provide an API key using the --api-key flag.")
+			}
+
+			runId, err := publishV2()
+			if err != nil {
+				sentry.CaptureException(err)
+				log.Printf("Failed to publish: %v", err)
+				return
+			}
+			reportPath = "test-runs/" + runId
+		} else if version == "v1" {
+			reportId, err := publishV1()
+			if err != nil {
+				sentry.CaptureException(err)
+				log.Printf("Failed to publish: %v", err)
+				return
+			}
+			reportPath = "reports/" + reportId
+		} else {
+			log.Fatalln("Unknown version", version)
 		}
-
-		log.Println("Using report", reportUuid)
-		time.Sleep(2000 * time.Millisecond)
-
-		rows := parseDataFile(dataFile)
-		groupedResult := groupDataPoints(rows)
-
-		internal.PublishDataPoints(
-			hostName(environment),
-			reportUuid,
-			reportToken,
-			groupedResult.DataPoints,
-			groupedResult.DataPointsByLabel,
-		)
-		log.Println("Published", len(groupedResult.DataPoints), "data points")
-
-		metricSummary := calculateMetricSummary(globalDataCounter, "")
-		metricSummaryByLabel := make(map[string]internal.MetricSummary)
-		for label, counter := range labeledDataCounter {
-			metricSummaryByLabel[label] = calculateMetricSummary(counter, label)
-		}
-		internal.PublishMetricSummary(
-			hostName(environment),
-			reportUuid,
-			reportToken,
-			metricSummary,
-			metricSummaryByLabel,
-		)
-		log.Println("Published metric summary")
 
 		switch environment {
 		case "production":
-			log.Printf("Report can be found at https://latencylingo.com/reports/%s", reportUuid)
+			log.Printf("Report can be found at https://latencylingo.com/%s", reportPath)
 		case "development":
-			log.Printf("Report can be found at http://localhost:3000/reports/%s", reportUuid)
+			log.Printf("Report can be found at http://localhost:3000/%s", reportPath)
 		}
 	},
 }
@@ -118,196 +77,111 @@ func init() {
 	publishCmd.Flags().StringVar(&reportLabel, "label", "Test Report", "Label to use when creating a new report.")
 	publishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
 	publishCmd.Flags().StringVar(&apiKey, "api-key", "", "API key to associate this report with a user.")
+	publishCmd.Flags().StringVar(&version, "version", "v1", "Version of the publish command to use. Supported values: v1, v2.")
 	publishCmd.MarkFlagRequired("file")
 }
 
-func parseDataFile(file string) []internal.UngroupedMetricDataPoint {
-	var (
-		rows []internal.UngroupedMetricDataPoint
-	)
-
-	validateFile(file)
-
-	f, err := os.Open(file)
+func publishV1() (string, error) {
+	rows, err := internal.ParseDataFile(dataFile)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 
-	defer f.Close()
+	groupedResult := internal.GroupDataPoints(rows, internal.FiveSeconds)
 
-	csvReader := csv.NewReader(f)
-
-	// skip header
-	if _, err := csvReader.Read(); err != nil {
-		log.Fatal(err)
-		panic(err)
-	}
-
-	for {
-		rec, err := csvReader.Read()
-		if err == io.EOF {
-			break
+	var reportToken string
+	if reportUuid == "" {
+		if response, err := internal.CreateReport(hostName(environment), apiKey, reportLabel); err != nil {
+			return "", err
+		} else {
+			reportUuid = response.Result.Data.ID
+			reportToken = response.Result.Data.WriteToken
 		}
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		rows = append(rows, internal.TranslateJmeterRow((rec)))
+		log.Println("Created a new report")
 	}
 
-	sort.SliceStable(rows, func(i int, j int) bool {
-		return rows[i].TimeStamp < rows[j].TimeStamp
-	})
+	log.Println("Using report", reportUuid)
 
-	return rows
+	if _, err := internal.PublishDataPoints(
+		hostName(environment),
+		reportUuid,
+		reportToken,
+		groupedResult.DataPoints,
+		groupedResult.DataPointsByLabel,
+	); err != nil {
+		return "", err
+	}
+
+	labeledDpCount := 0
+	for _, dp := range groupedResult.DataPointsByLabel {
+		labeledDpCount += len(dp)
+	}
+	log.Println("published", len(groupedResult.DataPoints)+labeledDpCount, "data points")
+
+	metricSummary := internal.CalculateMetricSummaryOverall()
+	metricSummaryByLabel := internal.CalculateMetricSummaryByLabel()
+
+	if _, err := internal.PublishMetricSummary(
+		hostName(environment),
+		reportUuid,
+		reportToken,
+		metricSummary,
+		metricSummaryByLabel,
+	); err != nil {
+		return "", err
+	}
+
+	log.Println("Published", len(metricSummaryByLabel)+1, "metric summary rows")
+
+	return reportUuid, nil
 }
 
-func validateFile(file string) {
-	info, err := os.Stat(file)
-	if os.IsNotExist(err) {
-		log.Fatalln("File", file, "does not exist")
-		return
+func publishV2() (string, error) {
+	rows, err := internal.ParseDataFile(dataFile)
+	if err != nil {
+		return "", err
+	}
+	groupedResult := internal.GroupAllDataPoints(rows)
+
+	testRun, err := internal.CreateTestRun(hostName(environment), apiKey, reportLabel, rows[0].TimeStamp, rows[len(rows)-1].TimeStamp)
+	if err != nil {
+		return "", err
+	}
+	runId := testRun.ID
+	runToken := testRun.WriteToken
+
+	log.Println("Created a new test run with ID", runId)
+
+	if _, err := internal.CreateTestChartMetrics(
+		hostName(environment),
+		runToken,
+		groupedResult.DataPoints,
+		groupedResult.DataPointsByLabel,
+	); err != nil {
+		return "", err
 	}
 
-	if info.Size() > MaxFileSize {
-		log.Fatalln("File", file, "is too large. There is currently a 100MB limit, but please reach out with your use case.")
+	labeledDpCount := 0
+	for _, dp := range groupedResult.DataPointsByLabel {
+		labeledDpCount += len(dp)
 	}
-}
+	log.Println("Published", len(groupedResult.DataPoints)+labeledDpCount, "chart metric rows")
 
-func groupDataPoints(ungrouped []internal.UngroupedMetricDataPoint) GroupedResult {
-	var (
-		startTime         uint64
-		dataPoints        []internal.MetricDataPoint
-		dataPointsByLabel map[string][]internal.MetricDataPoint
-		batch             []internal.UngroupedMetricDataPoint
-		batchByLabel      map[string][]internal.UngroupedMetricDataPoint
-	)
-	dataPointsByLabel = make(map[string][]internal.MetricDataPoint)
-	batchByLabel = make(map[string][]internal.UngroupedMetricDataPoint)
+	metricSummary := internal.CalculateMetricSummaryOverall()
+	metricSummaryByLabel := internal.CalculateMetricSummaryByLabel()
 
-	for _, dp := range ungrouped {
-		if startTime == 0 {
-			// init start time to last 5s interval from time stamp
-			startTime = calculateIntervalFloor(dp.TimeStamp)
-		}
-
-		if dp.TimeStamp-startTime > 5 {
-			dataPoints = append(dataPoints, groupDataPointBatch(batch, startTime, ""))
-			mergeDataPointsByLabel(dataPointsByLabel, batchByLabel, startTime)
-			batch = nil
-			batchByLabel = map[string][]internal.UngroupedMetricDataPoint{}
-			startTime = 0
-		}
-
-		batch = append(batch, dp)
-		batchByLabel[dp.Label] = append(batchByLabel[dp.Label], dp)
+	if _, err := internal.CreateTestSummaryMetrics(
+		hostName(environment),
+		runToken,
+		metricSummary,
+		metricSummaryByLabel,
+	); err != nil {
+		return "", err
 	}
 
-	if len(batch) > 0 {
-		startTime = calculateIntervalFloor(batch[0].TimeStamp)
-		dataPoints = append(dataPoints, groupDataPointBatch(batch, startTime, ""))
-		mergeDataPointsByLabel(dataPointsByLabel, batchByLabel, startTime)
-	}
+	log.Println("Published", len(metricSummaryByLabel)+1, "summary metric rows")
 
-	return GroupedResult{
-		DataPoints:        dataPoints,
-		DataPointsByLabel: dataPointsByLabel,
-	}
-}
-
-func mergeDataPointsByLabel(existing map[string][]internal.MetricDataPoint, batch map[string][]internal.UngroupedMetricDataPoint, startTime uint64) {
-	for label, dataPoints := range batch {
-		existing[label] = append(existing[label], groupDataPointBatch(dataPoints, startTime, label))
-	}
-}
-
-func groupDataPointBatch(ungrouped []internal.UngroupedMetricDataPoint, startTime uint64, label string) internal.MetricDataPoint {
-	var (
-		latencies []float64
-		grouped   internal.MetricDataPoint
-	)
-
-	grouped.TimeStamp = startTime
-
-	for _, dp := range ungrouped {
-		if label != "" {
-			grouped.Label = label
-		}
-
-		grouped.Requests += dp.Requests
-		grouped.Failures += dp.Failures
-
-		if dp.VirtualUsers > grouped.VirtualUsers {
-			grouped.VirtualUsers = dp.VirtualUsers
-		}
-
-		latencies = append(latencies, float64(dp.Latency))
-	}
-
-	grouped.Latencies = calculateLatencySummary(latencies)
-
-	if label != "" {
-		updateGlobalCounter(globalDataCounter, grouped, latencies)
-		if labeledDataCounter[label] == nil {
-			labeledDataCounter[label] = &GlobalDataCounter{}
-		}
-
-		updateGlobalCounter(labeledDataCounter[label], grouped, latencies)
-	}
-
-	return grouped
-}
-
-func updateGlobalCounter(counter *GlobalDataCounter, metric internal.MetricDataPoint, latencies []float64) {
-	counter.TotalRequests += metric.Requests
-	counter.TotalFailures += metric.Failures
-	if metric.VirtualUsers > counter.MaxVirtualUsers {
-		counter.MaxVirtualUsers = metric.VirtualUsers
-	}
-	counter.RawLatencies = append(counter.RawLatencies, latencies...)
-}
-
-func calculateLatencySummary(latencies []float64) *internal.Latencies {
-	summary := internal.Latencies{}
-	summary.AvgMs, _ = stats.Mean(latencies)
-	summary.MaxMs, _ = stats.Max(latencies)
-	summary.MinMs, _ = stats.Min(latencies)
-	summary.P50Ms, _ = stats.Percentile(latencies, 50)
-	summary.P75Ms, _ = stats.Percentile(latencies, 75)
-	summary.P90Ms, _ = stats.Percentile(latencies, 90)
-	summary.P95Ms, _ = stats.Percentile(latencies, 95)
-	summary.P99Ms, _ = stats.Percentile(latencies, 99)
-
-	summary.AvgMs, _ = stats.Round(summary.AvgMs, 2)
-	summary.MaxMs, _ = stats.Round(summary.MaxMs, 2)
-	summary.MinMs, _ = stats.Round(summary.MinMs, 2)
-	summary.P50Ms, _ = stats.Round(summary.P50Ms, 2)
-	summary.P75Ms, _ = stats.Round(summary.P75Ms, 2)
-	summary.P90Ms, _ = stats.Round(summary.P90Ms, 2)
-	summary.P95Ms, _ = stats.Round(summary.P95Ms, 2)
-	summary.P99Ms, _ = stats.Round(summary.P99Ms, 2)
-
-	return &summary
-}
-
-func calculateMetricSummary(globalDataCounter *GlobalDataCounter, label string) internal.MetricSummary {
-	summary := internal.MetricSummary{}
-
-	if label != "" {
-		summary.Label = label
-	}
-
-	summary.TotalRequests = globalDataCounter.TotalRequests
-	summary.TotalFailures = globalDataCounter.TotalFailures
-	summary.MaxVirtualUsers = globalDataCounter.MaxVirtualUsers
-	summary.Latencies = calculateLatencySummary(globalDataCounter.RawLatencies)
-
-	return summary
-}
-
-func calculateIntervalFloor(timeStamp uint64) uint64 {
-	difference := timeStamp % 60 % 5
-	return timeStamp - difference
+	return runId, nil
 }
 
 func hostName(env string) string {
@@ -327,10 +201,16 @@ func initSentryScope() {
 	scope.SetTags(map[string]string{
 		"environment": environment,
 	})
+
+	var userRef string
+	if apiKey != "" {
+		userRef = apiKey[:6] + "..." + apiKey[len(apiKey)-6:]
+	}
+
 	// TODO(bobsin): add CLI version here
 	scope.SetContext("Flags", map[string]string{
 		"environment": environment,
-		"user":        apiKey,
+		"user":        userRef,
 		"dataFile":    dataFile,
 		"reportLabel": reportLabel,
 	})
