@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/AnthonyBobsin/latency-lingo-cli/internal"
+	"github.com/getsentry/sentry-go"
 	"github.com/montanaflynn/stats"
 	"github.com/spf13/cobra"
 )
@@ -53,6 +54,8 @@ var publishCmd = &cobra.Command{
 	Long: `Command to create a performance test report on Latency Lingo based on the specified
 test results dataset.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		initSentryScope()
+
 		if environment != "production" && environment != "development" {
 			log.Fatalln("User specified unknown environment", environment)
 		}
@@ -317,4 +320,18 @@ func hostName(env string) string {
 		log.Fatalln("User specified unknown environment", env)
 		return ""
 	}
+}
+
+func initSentryScope() {
+	scope := sentry.CurrentHub().PushScope()
+	scope.SetTags(map[string]string{
+		"environment": environment,
+	})
+	// TODO(bobsin): add CLI version here
+	scope.SetContext("Flags", map[string]string{
+		"environment": environment,
+		"user":        apiKey,
+		"dataFile":    dataFile,
+		"reportLabel": reportLabel,
+	})
 }

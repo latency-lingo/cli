@@ -5,8 +5,11 @@ Copyright © 2022 Anthony Bobsin anthony.bobsin.dev@gmail.com
 package cmd
 
 import (
+	"log"
 	"os"
+	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +23,7 @@ on performance test result data.
 This SDK facilitates publishing test metrics from your existing load test runner
 to our APIs. This is required to leverage our UI.
 
-The current load test runner supported is jMeter with support for k6, Gatling, and Locust coming.`,
+The current load test runner supported is JMeter with support for k6, Gatling, and Locust coming.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
@@ -29,6 +32,16 @@ The current load test runner supported is jMeter with support for k6, Gatling, a
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	setupSentry()
+
+	defer sentry.Flush(2 * time.Second)
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println("Unexpected error received:", err, ". Our team has been notified, but please contact support for more information.")
+			sentry.CurrentHub().Recover(err)
+		}
+	}()
+
 	err := rootCmd.Execute()
 	if err != nil {
 		os.Exit(1)
@@ -45,4 +58,15 @@ func init() {
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+func setupSentry() {
+	err := sentry.Init(sentry.ClientOptions{
+		Dsn:              "https://db842398a24b4242bfdcdc4d5d4bf85f@o1352488.ingest.sentry.io/6633890",
+		TracesSampleRate: 1.0,
+		AttachStacktrace: true,
+	})
+	if err != nil {
+		log.Fatalf("sentry.Init: %s", err)
+	}
 }
