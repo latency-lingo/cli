@@ -153,29 +153,21 @@ func CreateTestRun(host string, apiKey string, name string, startedAt uint64, st
 }
 
 func CreateTestChartMetrics(host string, token string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) (bool, error) {
-	batch := 200
-	for i := 0; i < len(dataPoints); i += batch {
-		j := i + batch
-		if j > len(dataPoints) {
-			j = len(dataPoints)
-		}
-
-		if _, err := CreateTestChartMetricsBatch(host, token, dataPoints[i:j]); err != nil {
-			return false, err
-		}
+	allDataPoints := make([]MetricDataPoint, 0)
+	allDataPoints = append(allDataPoints, dataPoints...)
+	for _, v := range dataPointsByLabel {
+		allDataPoints = append(allDataPoints, v...)
 	}
 
-	// TODO(bobsin): combine batches if less than 200
-	for _, v := range dataPointsByLabel {
-		for i := 0; i < len(v); i += batch {
-			j := i + batch
-			if j > len(v) {
-				j = len(v)
-			}
+	batch := 500
+	for i := 0; i < len(allDataPoints); i += batch {
+		j := i + batch
+		if j > len(allDataPoints) {
+			j = len(allDataPoints)
+		}
 
-			if _, err := CreateTestChartMetricsBatch(host, token, v[i:j]); err != nil {
-				return false, err
-			}
+		if _, err := CreateTestChartMetricsBatch(host, token, allDataPoints[i:j]); err != nil {
+			return false, err
 		}
 	}
 
