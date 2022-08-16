@@ -16,14 +16,12 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "latency-lingo-cli",
-	Short: "SDK to publish performance test data to Latency Lingo APIs",
-	Long: `Latency Lingo is a tool to help your engineering team analyze and collaborate
-on performance test result data.
+	Short: "Tool to publish performance test data to Latency Lingo APIs",
+	Long: `Latency Lingo is a platform to help your team analyze and collaborate on web performance test results.
 
-This SDK facilitates publishing test metrics from your existing load test runner
-to our APIs. This is required to leverage our UI.
+This tool helps you publish test metrics from your existing load test runner to our APIs. This is required to leverage our UI.
 
-The current load test runner supported is JMeter with support for k6, Gatling, and Locust coming.`,
+It supports JMeter with planned support for Locust, Gatling, and k6.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },

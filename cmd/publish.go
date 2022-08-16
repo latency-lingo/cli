@@ -23,8 +23,7 @@ var (
 var publishCmd = &cobra.Command{
 	Use:   "publish",
 	Short: "Command to publish result datasets as a Latency Lingo performance test report.",
-	Long: `Command to create a performance test report on Latency Lingo based on the specified
-test results dataset.`,
+	Long:  `Command to create a performance test report on Latency Lingo based on the specified test results dataset.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		initSentryScope()
 
