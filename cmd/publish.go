@@ -15,10 +15,8 @@ import (
 var (
 	dataFile    string
 	reportLabel string
-	reportUuid  string
 	environment string
 	apiKey      string
-	version     string
 )
 
 // publishCmd represents the publish command
@@ -37,29 +35,13 @@ test results dataset.`,
 		log.Println("Parsing provided file", dataFile)
 		var reportPath string
 
-		if version == "v2" {
-			if apiKey == "" {
-				log.Fatalln("API key is required for version 2. Please sign up and provide an API key using the --api-key flag.")
-			}
-
-			runId, err := publishV2()
-			if err != nil {
-				sentry.CaptureException(err)
-				log.Printf("Failed to publish: %v", err)
-				return
-			}
-			reportPath = "test-runs/" + runId
-		} else if version == "v1" {
-			reportId, err := publishV1()
-			if err != nil {
-				sentry.CaptureException(err)
-				log.Printf("Failed to publish: %v", err)
-				return
-			}
-			reportPath = "reports/" + reportId
-		} else {
-			log.Fatalln("Unknown version", version)
+		runId, err := publishV2()
+		if err != nil {
+			sentry.CaptureException(err)
+			log.Printf("Failed to publish: %v", err)
+			return
 		}
+		reportPath = "test-runs/" + runId
 
 		switch environment {
 		case "production":
@@ -74,66 +56,12 @@ func init() {
 	rootCmd.AddCommand(publishCmd)
 
 	publishCmd.Flags().StringVar(&dataFile, "file", "", "Test results file to parse and publish.")
-	publishCmd.Flags().StringVar(&reportLabel, "label", "Test Report", "Label to use when creating a new report.")
+	publishCmd.Flags().StringVar(&reportLabel, "label", "", "Test scenario name for this run.")
 	publishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
-	publishCmd.Flags().StringVar(&apiKey, "api-key", "", "API key to associate this report with a user.")
-	publishCmd.Flags().StringVar(&version, "version", "v1", "Version of the publish command to use. Supported values: v1, v2.")
+	publishCmd.Flags().StringVar(&apiKey, "api-key", "", "API key to associate test runs with a user. Sign up to get one at https://latencylingo.com/account/api-access")
 	publishCmd.MarkFlagRequired("file")
-}
-
-func publishV1() (string, error) {
-	rows, err := internal.ParseDataFile(dataFile)
-	if err != nil {
-		return "", err
-	}
-
-	groupedResult := internal.GroupDataPoints(rows, internal.FiveSeconds)
-
-	var reportToken string
-	if reportUuid == "" {
-		if response, err := internal.CreateReport(hostName(environment), apiKey, reportLabel); err != nil {
-			return "", err
-		} else {
-			reportUuid = response.Result.Data.ID
-			reportToken = response.Result.Data.WriteToken
-		}
-		log.Println("Created a new report")
-	}
-
-	log.Println("Using report", reportUuid)
-
-	if _, err := internal.PublishDataPoints(
-		hostName(environment),
-		reportUuid,
-		reportToken,
-		groupedResult.DataPoints,
-		groupedResult.DataPointsByLabel,
-	); err != nil {
-		return "", err
-	}
-
-	labeledDpCount := 0
-	for _, dp := range groupedResult.DataPointsByLabel {
-		labeledDpCount += len(dp)
-	}
-	log.Println("published", len(groupedResult.DataPoints)+labeledDpCount, "data points")
-
-	metricSummary := internal.CalculateMetricSummaryOverall()
-	metricSummaryByLabel := internal.CalculateMetricSummaryByLabel()
-
-	if _, err := internal.PublishMetricSummary(
-		hostName(environment),
-		reportUuid,
-		reportToken,
-		metricSummary,
-		metricSummaryByLabel,
-	); err != nil {
-		return "", err
-	}
-
-	log.Println("Published", len(metricSummaryByLabel)+1, "metric summary rows")
-
-	return reportUuid, nil
+	publishCmd.MarkFlagRequired("api-key")
+	publishCmd.MarkFlagRequired("label")
 }
 
 func publishV2() (string, error) {
@@ -205,13 +133,16 @@ func initSentryScope() {
 	var userRef string
 	if apiKey != "" {
 		userRef = apiKey[:6] + "..." + apiKey[len(apiKey)-6:]
+		scope.SetUser(sentry.User{
+			ID: userRef,
+		})
 	}
 
-	// TODO(bobsin): add CLI version here
 	scope.SetContext("Flags", map[string]string{
 		"environment": environment,
 		"user":        userRef,
 		"dataFile":    dataFile,
 		"reportLabel": reportLabel,
+		"version":     "1.3.0",
 	})
 }

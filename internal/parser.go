@@ -23,7 +23,7 @@ func ParseDataFile(file string) ([]UngroupedMetricDataPoint, error) {
 
 	f, err := os.Open(file)
 	if err != nil {
-		return nil, errors.Errorf("cannot open file %s: %w", file, err)
+		return nil, errors.Wrapf(err, "cannot open file %s", file)
 	}
 
 	defer f.Close()
@@ -31,7 +31,7 @@ func ParseDataFile(file string) ([]UngroupedMetricDataPoint, error) {
 	csvReader := csv.NewReader(f)
 	if _, err := csvReader.Read(); err != nil {
 		// TODO(bobsin): validate default header config
-		return nil, errors.Errorf("cannot read file %s: %w", file, err)
+		return nil, errors.Wrapf(err, "cannot read file %s", file)
 	}
 
 	for {
@@ -39,7 +39,7 @@ func ParseDataFile(file string) ([]UngroupedMetricDataPoint, error) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return nil, errors.Errorf("cannot read file %s: %w", file, err)
+			return nil, errors.Wrapf(err, "cannot read file %s", file)
 		}
 		rows = append(rows, TranslateJmeterRow(rec))
 	}

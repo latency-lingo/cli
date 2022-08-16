@@ -125,19 +125,19 @@ func CreateTestRun(host string, apiKey string, name string, startedAt uint64, st
 	})
 
 	if err != nil {
-		return nil, errors.Errorf("[test.createRun] failed to build request body: %w", err)
+		return nil, errors.Wrap(err, "[test.createRun] failed to build request body")
 	}
 
 	resp, err := http.Post(host+"/v2/test.createRun", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
-		return nil, errors.Errorf("[test.createRun] request failed: %w", err)
+		return nil, errors.Wrap(err, "[test.createRun] request failed")
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll((resp.Body))
 	if err != nil {
-		return nil, errors.Errorf("[test.createRun] failed to parse response: %w", err)
+		return nil, errors.Wrap(err, "[test.createRun] failed to parse response")
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -146,7 +146,7 @@ func CreateTestRun(host string, apiKey string, name string, startedAt uint64, st
 
 	var parsed CreateTestRunResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, errors.Errorf("[test.createRun] failed to parse response: %w", err)
+		return nil, errors.Wrap(err, "[test.createRun] failed to parse response")
 	}
 
 	return &parsed.Result.Data, nil
@@ -183,19 +183,19 @@ func CreateTestChartMetricsBatch(host string, token string, dataPoints []MetricD
 	})
 
 	if err != nil {
-		return false, errors.Errorf("[test.createChartMetrics] failed to build request body: %w", err)
+		return false, errors.Wrap(err, "[test.createChartMetrics] failed to build request body")
 	}
 
 	resp, err := http.Post(host+"/v2/test.createChartMetrics", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
-		return false, errors.Errorf("[test.createChartMetrics] request failed: %w", err)
+		return false, errors.Wrap(err, "[test.createChartMetrics] request failed")
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll((resp.Body))
 	if err != nil {
-		return false, errors.Errorf("[test.createChartMetrics] failed to parse response: %w", err)
+		return false, errors.Wrap(err, "[test.createChartMetrics] failed to parse response")
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -221,19 +221,19 @@ func CreateTestSummaryMetrics(host string, token string, metrics MetricSummary, 
 	})
 
 	if err != nil {
-		return false, errors.Errorf("[test.createSummaryMetrics] failed to build request body: %w", err)
+		return false, errors.Wrap(err, "[test.createSummaryMetrics] failed to build request body")
 	}
 
 	resp, err := http.Post(host+"/v2/test.createSummaryMetrics", "application/json", bytes.NewBuffer(postBody))
 	if err != nil {
-		return false, errors.Errorf("[test.createSummaryMetrics] request failed: %w", err)
+		return false, errors.Wrap(err, "[test.createSummaryMetrics] request failed")
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll((resp.Body))
 	if err != nil {
-		return false, errors.Errorf("[test.createSummaryMetrics] request failed: %w", err)
+		return false, errors.Wrap(err, "[test.createSummaryMetrics] request failed")
 	}
 
 	if resp.StatusCode != http.StatusOK {
