@@ -142,6 +142,6 @@ func initSentryScope() {
 		"user":        userRef,
 		"dataFile":    dataFile,
 		"reportLabel": reportLabel,
-		"version":     "1.3.0",
+		"version":     "1.3.1",
 	})
 }
