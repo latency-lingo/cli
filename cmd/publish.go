@@ -6,6 +6,7 @@ package cmd
 
 import (
 	"log"
+	"os"
 
 	"github.com/AnthonyBobsin/latency-lingo-cli/internal"
 	"github.com/getsentry/sentry-go"
@@ -38,6 +39,7 @@ var publishCmd = &cobra.Command{
 		if err != nil {
 			sentry.CaptureException(err)
 			log.Printf("Failed to publish: %v", err)
+			os.Exit(1)
 			return
 		}
 		reportPath = "test-runs/" + runId
