@@ -1,8 +1,10 @@
 package internal
 
 import (
+	"errors"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -46,34 +48,93 @@ type UngroupedMetricDataPoint struct {
 	Label        string
 }
 
-func TranslateJmeterRow(row []string) UngroupedMetricDataPoint {
+type ColumnIndices struct {
+	Success         uint32
+	SuccessFound    bool
+	AllThreads      uint32
+	AllThreadsFound bool
+	Elapsed         uint32
+	ElapsedFound    bool
+	TimeStamp       uint32
+	TimeStampFound  bool
+	Label           uint32
+	LabelFound      bool
+}
+
+func BuildColumnIndices(row []string) (*ColumnIndices, error) {
+	var indices ColumnIndices
+	for i, column := range row {
+		switch column {
+		case "success":
+			indices.Success = uint32(i)
+			indices.SuccessFound = true
+		case "allThreads":
+			indices.AllThreads = uint32(i)
+			indices.AllThreadsFound = true
+		case "elapsed":
+			indices.Elapsed = uint32(i)
+			indices.ElapsedFound = true
+		case "timeStamp":
+			indices.TimeStamp = uint32(i)
+			indices.TimeStampFound = true
+		case "label":
+			indices.Label = uint32(i)
+			indices.LabelFound = true
+		}
+	}
+
+	missing := []string{}
+	if !indices.SuccessFound {
+		missing = append(missing, "success")
+	}
+	if !indices.AllThreadsFound {
+		missing = append(missing, "allThreads")
+	}
+	if !indices.ElapsedFound {
+		missing = append(missing, "elapsed")
+	}
+	if !indices.TimeStampFound {
+		missing = append(missing, "timeStamp")
+	}
+	if !indices.LabelFound {
+		missing = append(missing, "label")
+	}
+
+	if len(missing) > 0 {
+		return nil, errors.New("missing column(s): " + strings.Join(missing, ", "))
+	}
+
+	return &indices, nil
+}
+
+func TranslateJmeterRow(row []string, indices *ColumnIndices) UngroupedMetricDataPoint {
 	var (
 		failures uint64
 	)
 
-	if row[7] == "true" {
+	if row[indices.Success] == "true" {
 		failures = 0
 	} else {
 		failures = 1
 	}
 
 	// TODO(bobsin): improve error handling
-	virtualUsers, err := strconv.ParseUint(row[12], 10, 32)
+	virtualUsers, err := strconv.ParseUint(row[indices.AllThreads], 10, 32)
 	if err != nil {
 		log.Println(err)
 	}
 
-	latency, err := strconv.ParseUint(row[1], 10, 32)
+	latency, err := strconv.ParseUint(row[indices.Elapsed], 10, 32)
 	if err != nil {
 		log.Println(err)
 	}
 
 	parsed := UngroupedMetricDataPoint{
-		Label:        row[2],
+		Label:        row[indices.Label],
 		Requests:     1,
 		Failures:     failures,
 		VirtualUsers: virtualUsers,
-		TimeStamp:    ParseTimeStamp(row[0]),
+		TimeStamp:    ParseTimeStamp(row[indices.TimeStamp]),
 		Latency:      latency,
 	}
 

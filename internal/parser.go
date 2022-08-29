@@ -29,9 +29,15 @@ func ParseDataFile(file string) ([]UngroupedMetricDataPoint, error) {
 	defer f.Close()
 
 	csvReader := csv.NewReader(f)
-	if _, err := csvReader.Read(); err != nil {
-		// TODO(bobsin): validate default header config
+	header, err := csvReader.Read()
+	if err != nil {
 		return nil, errors.Wrapf(err, "cannot read file %s", file)
+	}
+
+	var indices *ColumnIndices
+	indices, err = BuildColumnIndices(header)
+	if err != nil {
+		return nil, errors.Wrapf(err, "cannot parse file %s", file)
 	}
 
 	for {
@@ -41,7 +47,7 @@ func ParseDataFile(file string) ([]UngroupedMetricDataPoint, error) {
 		} else if err != nil {
 			return nil, errors.Wrapf(err, "cannot read file %s", file)
 		}
-		rows = append(rows, TranslateJmeterRow(rec))
+		rows = append(rows, TranslateJmeterRow(rec, indices))
 	}
 
 	sort.SliceStable(rows, func(i int, j int) bool {
