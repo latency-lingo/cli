@@ -2,10 +2,12 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/pkg/errors"
 )
 
@@ -115,6 +117,9 @@ type CreateTestSummaryMetricsRequest struct {
 }
 
 func CreateTestRun(host string, apiKey string, name string, startedAt uint64, stoppedAt uint64) (*TestRun, error) {
+	span := sentry.StartSpan(context.Background(), "CreateTestRun")
+	defer span.Finish()
+
 	postBody, err := json.Marshal(CreateTestRunRequest{
 		Data: &CreateTestRunRequestData{
 			ApiKey:       apiKey,
@@ -153,6 +158,9 @@ func CreateTestRun(host string, apiKey string, name string, startedAt uint64, st
 }
 
 func CreateTestChartMetrics(host string, token string, dataPoints []MetricDataPoint, dataPointsByLabel map[string][]MetricDataPoint) (bool, error) {
+	span := sentry.StartSpan(context.Background(), "CreateTestChartMetrics")
+	defer span.Finish()
+
 	allDataPoints := make([]MetricDataPoint, 0)
 	allDataPoints = append(allDataPoints, dataPoints...)
 	for _, v := range dataPointsByLabel {
@@ -206,6 +214,9 @@ func CreateTestChartMetricsBatch(host string, token string, dataPoints []MetricD
 }
 
 func CreateTestSummaryMetrics(host string, token string, metrics MetricSummary, metricsByLabel map[string]MetricSummary) (bool, error) {
+	span := sentry.StartSpan(context.Background(), "CreateTestSummaryMetrics")
+	defer span.Finish()
+
 	var mappedMetrics []NewMetric
 
 	mappedMetrics = append(mappedMetrics, mapMetricSummary(metrics))

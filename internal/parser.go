@@ -1,18 +1,23 @@
 package internal
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"io"
 	"os"
 	"sort"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/pkg/errors"
 )
 
 const MaxFileSize = 1000 * 1000 * 100 // 100MB
 
 func ParseDataFile(file string) ([]UngroupedMetricDataPoint, error) {
+	span := sentry.StartSpan(context.Background(), "ParseDataFile")
+	defer span.Finish()
+
 	var (
 		rows []UngroupedMetricDataPoint
 	)

@@ -5,6 +5,7 @@ Copyright © 2022 Anthony Bobsin anthony.bobsin.dev@gmail.com
 package cmd
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -27,6 +28,8 @@ var publishCmd = &cobra.Command{
 	Long:  `Command to create a performance test report on Latency Lingo based on the specified test results dataset.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		initSentryScope()
+		span := sentry.StartSpan(context.Background(), "Run", sentry.TransactionName("publish"))
+		defer span.Finish()
 
 		if environment != "production" && environment != "development" {
 			log.Fatalln("Received unknown environment", environment)

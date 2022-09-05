@@ -1,6 +1,11 @@
 package internal
 
-import "github.com/montanaflynn/stats"
+import (
+	"context"
+
+	"github.com/getsentry/sentry-go"
+	"github.com/montanaflynn/stats"
+)
 
 type GlobalDataCounter struct {
 	Label           string
@@ -29,6 +34,9 @@ var allTimeAggregationLevels = []TimeAggregationLevel{
 }
 
 func GroupAllDataPoints(ungrouped []UngroupedMetricDataPoint) GroupedResult {
+	span := sentry.StartSpan(context.Background(), "GroupAllDataPoints")
+	defer span.Finish()
+
 	groupedResult := GroupedResult{}
 	groupedResult.DataPointsByLabel = make(map[string][]MetricDataPoint)
 
