@@ -19,6 +19,7 @@ var (
 	reportLabel string
 	environment string
 	apiKey      string
+	rawSamples  bool
 )
 
 // publishCmd represents the publish command
@@ -36,9 +37,18 @@ var publishCmd = &cobra.Command{
 		}
 
 		log.Println("Parsing provided file", dataFile)
-		var reportPath string
+		var (
+			reportPath string
+			runId      string
+			err        error
+		)
 
-		runId, err := publishV2()
+		if rawSamples {
+			runId, err = publishRawSamples()
+		} else {
+			runId, err = publishV2()
+		}
+
 		if err != nil {
 			sentry.CaptureException(err)
 			log.Printf("Failed to publish: %v", err)
@@ -63,9 +73,54 @@ func init() {
 	publishCmd.Flags().StringVar(&reportLabel, "label", "", "Test scenario name for this run.")
 	publishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
 	publishCmd.Flags().StringVar(&apiKey, "api-key", "", "API key to associate test runs with a user. Sign up to get one at https://latencylingo.com/account/api-access")
+	publishCmd.Flags().BoolVar(&rawSamples, "all-samples", false, "Publish all samples instead of pre-aggregated metrics.")
 	publishCmd.MarkFlagRequired("file")
 	publishCmd.MarkFlagRequired("api-key")
 	publishCmd.MarkFlagRequired("label")
+}
+
+func publishRawSamples() (string, error) {
+	samples, err := internal.ParseDataFileSamples(dataFile)
+	if err != nil {
+		return "", err
+	}
+
+	testRun, err := internal.CreateTestRun(
+		hostName(environment),
+		apiKey,
+		reportLabel,
+		samples[0].TimeStamp/1000,
+		0,
+		// TODO(bobsin): make this more accurate.
+		"listener",
+	)
+	if err != nil {
+		return "", err
+	}
+	runId := testRun.ID
+	runToken := testRun.WriteToken
+
+	log.Println("Created a new test run with ID", runId)
+
+	if _, err := internal.CreateTestSamples(
+		hostName(environment),
+		runToken,
+		samples,
+	); err != nil {
+		return "", err
+	}
+
+	log.Println("Published", len(samples), "samples")
+
+	if _, err := internal.UpdateTestRun(
+		hostName(environment),
+		runToken,
+		samples[len(samples)-1].TimeStamp/1000,
+	); err != nil {
+		return "", err
+	}
+
+	return runId, nil
 }
 
 func publishV2() (string, error) {
@@ -75,7 +130,7 @@ func publishV2() (string, error) {
 	}
 	groupedResult := internal.GroupAllDataPoints(rows)
 
-	testRun, err := internal.CreateTestRun(hostName(environment), apiKey, reportLabel, rows[0].TimeStamp, rows[len(rows)-1].TimeStamp)
+	testRun, err := internal.CreateTestRun(hostName(environment), apiKey, reportLabel, rows[0].TimeStamp, rows[len(rows)-1].TimeStamp, "file")
 	if err != nil {
 		return "", err
 	}

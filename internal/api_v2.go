@@ -12,12 +12,13 @@ import (
 )
 
 type CreateTestRunRequestData struct {
-	ApiKey       string `json:"apiKey"`
-	ScenarioName string `json:"scenarioName"`
-	RunName      string `json:"runName"`
-	Environment  string `json:"environment"`
-	StartedAt    uint64 `json:"startedAt"`
-	StoppedAt    uint64 `json:"stoppedAt"`
+	ApiKey          string `json:"apiKey"`
+	ScenarioName    string `json:"scenarioName"`
+	RunName         string `json:"runName"`
+	Environment     string `json:"environment"`
+	StartedAt       uint64 `json:"startedAt"`
+	StoppedAt       uint64 `json:"stoppedAt"`
+	PublishStrategy string `json:"publishStrategy"`
 }
 
 type CreateTestRunRequest struct {
@@ -36,6 +37,43 @@ type CreateTestRunResponse struct {
 		Success bool    `json:"success"`
 		Data    TestRun `json:"data"`
 	} `json:"result"`
+}
+
+type LingoSample struct {
+	TimeStamp       uint64 `json:"timestamp"`
+	Label           string `json:"label"`
+	Elapsed         uint64 `json:"elapsed"`
+	ResponseCode    int    `json:"responseCode"`
+	ResponseMessage string `json:"responseMessage"`
+	ThreadName      string `json:"threadName"`
+	DataType        string `json:"dataType"`
+	Success         bool   `json:"success"`
+	FailureMessage  string `json:"failureMessage"`
+	Bytes           int    `json:"bytes"`
+	SentBytes       int    `json:"sentBytes"`
+	GrpThreads      int    `json:"grpThreads"`
+	AllThreads      int    `json:"allThreads"`
+	URL             string `json:"url"`
+	IdleTime        uint64 `json:"idleTime"`
+	Connect         uint64 `json:"connect"`
+}
+
+type CreateTestSamplesRequestData struct {
+	Token   string        `json:"token"`
+	Samples []LingoSample `json:"samples"`
+}
+
+type CreateTestSamplesRequest struct {
+	Data *CreateTestSamplesRequestData `json:"data"`
+}
+
+type UpdateTestRunRequestData struct {
+	Token     string `json:"token"`
+	StoppedAt uint64 `json:"stoppedAt"`
+}
+
+type UpdateTestRunRequest struct {
+	Data *UpdateTestRunRequestData `json:"data"`
 }
 
 type NewMetric struct {
@@ -116,16 +154,17 @@ type CreateTestSummaryMetricsRequest struct {
 	Data *CreateTestSummaryMetricsRequestData `json:"data"`
 }
 
-func CreateTestRun(host string, apiKey string, name string, startedAt uint64, stoppedAt uint64) (*TestRun, error) {
+func CreateTestRun(host string, apiKey string, name string, startedAt uint64, stoppedAt uint64, publishStrategy string) (*TestRun, error) {
 	span := sentry.StartSpan(context.Background(), "CreateTestRun")
 	defer span.Finish()
 
 	postBody, err := json.Marshal(CreateTestRunRequest{
 		Data: &CreateTestRunRequestData{
-			ApiKey:       apiKey,
-			ScenarioName: name,
-			StartedAt:    startedAt,
-			StoppedAt:    stoppedAt,
+			ApiKey:          apiKey,
+			ScenarioName:    name,
+			StartedAt:       startedAt,
+			StoppedAt:       stoppedAt,
+			PublishStrategy: publishStrategy,
 		},
 	})
 
@@ -249,6 +288,88 @@ func CreateTestSummaryMetrics(host string, token string, metrics MetricSummary, 
 
 	if resp.StatusCode != http.StatusOK {
 		return false, errors.Errorf("[test.createSummaryMetrics] request failed: %s", string(body))
+	}
+
+	return true, nil
+}
+
+func CreateTestSamples(host string, token string, samples []LingoSample) (bool, error) {
+	span := sentry.StartSpan(context.Background(), "CreateTestSamples")
+	defer span.Finish()
+
+	// TODO(bobsin): parallelize this
+	batch := 500
+	for i := 0; i < len(samples); i += batch {
+		j := i + batch
+		if j > len(samples) {
+			j = len(samples)
+		}
+
+		if _, err := CreateTestSamplesBatch(host, token, samples[i:j]); err != nil {
+			return false, err
+		}
+	}
+
+	return true, nil
+}
+
+func CreateTestSamplesBatch(host string, token string, samples []LingoSample) (bool, error) {
+	postBody, err := json.Marshal(CreateTestSamplesRequest{
+		Data: &CreateTestSamplesRequestData{
+			Token:   token,
+			Samples: samples,
+		},
+	})
+
+	if err != nil {
+		return false, errors.Wrap(err, "[test.createSamples] failed to build request body")
+	}
+
+	resp, err := http.Post(host+"/v2/test.createSamples", "application/json", bytes.NewBuffer(postBody))
+	if err != nil {
+		return false, errors.Wrap(err, "[test.createSamples] request failed")
+	}
+
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll((resp.Body))
+	if err != nil {
+		return false, errors.Wrap(err, "[test.createSamples] failed to parse response")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return false, errors.Errorf("[test.createSamples] request failed: %s", string(body))
+	}
+
+	return true, nil
+}
+
+func UpdateTestRun(host string, token string, stoppedAt uint64) (bool, error) {
+	postBody, err := json.Marshal(UpdateTestRunRequest{
+		Data: &UpdateTestRunRequestData{
+			Token:     token,
+			StoppedAt: stoppedAt,
+		},
+	})
+
+	if err != nil {
+		return false, errors.Wrap(err, "[test.updateRun] failed to build request body")
+	}
+
+	resp, err := http.Post(host+"/v2/test.updateRun", "application/json", bytes.NewBuffer(postBody))
+	if err != nil {
+		return false, errors.Wrap(err, "[test.updateRun] request failed")
+	}
+
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll((resp.Body))
+	if err != nil {
+		return false, errors.Wrap(err, "[test.updateRun] failed to parse response")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return false, errors.Errorf("[test.updateRun] request failed: %s", string(body))
 	}
 
 	return true, nil

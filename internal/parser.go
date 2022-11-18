@@ -62,6 +62,53 @@ func ParseDataFile(file string) ([]UngroupedMetricDataPoint, error) {
 	return rows, nil
 }
 
+func ParseDataFileSamples(file string) ([]LingoSample, error) {
+	span := sentry.StartSpan(context.Background(), "ParseDataFileSamples")
+	defer span.Finish()
+
+	var (
+		samples []LingoSample
+	)
+
+	if err := validateFile(file); err != nil {
+		return nil, err
+	}
+
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, errors.Wrapf(err, "cannot open file %s", file)
+	}
+
+	defer f.Close()
+
+	csvReader := csv.NewReader(f)
+	header, err := csvReader.Read()
+	if err != nil {
+		return nil, errors.Wrapf(err, "cannot read file %s", file)
+	}
+
+	indices, err := BuildColumnIndicesV2(header)
+	if err != nil {
+		return nil, errors.Wrapf(err, "cannot parse file %s", file)
+	}
+
+	for {
+		rec, err := csvReader.Read()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, errors.Wrapf(err, "cannot read file %s", file)
+		}
+		samples = append(samples, TranslateJmeterRowSample(rec, indices))
+	}
+
+	sort.SliceStable(samples, func(i int, j int) bool {
+		return samples[i].TimeStamp < samples[j].TimeStamp
+	})
+
+	return samples, nil
+}
+
 func validateFile(file string) error {
 	info, err := os.Stat(file)
 	if os.IsNotExist(err) {
