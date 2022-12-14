@@ -85,6 +85,24 @@ var (
 		},
 		Metric: "http_req_duration",
 	}
+	sampleLocustHeaders = []string{
+		"Timestamp",
+		"User Count",
+		"Type",
+		"Name",
+		"Total Request Count",
+		"Total Failure Count",
+		"Total Average Response Time",
+	}
+	sampleLocustRow = []string{
+		"1647453612",
+		"1",
+		"GET",
+		"/v1/simulations/latency?level=low",
+		"1",
+		"0",
+		"200.00",
+	}
 )
 
 func TestBuildColumnIndicesV2(t *testing.T) {
@@ -185,5 +203,33 @@ func TestTranslateK6Row(t *testing.T) {
 
 	if row.Latency != 4009 {
 		t.Error("Failed to parse latency: ", row.Latency, " expected: ", 4009)
+	}
+}
+
+func TestTranslateLocustRow(t *testing.T) {
+	indices, err := BuildColumnIndicesLocust(sampleLocustHeaders)
+	if err != nil {
+		t.Error("Failed to build locust column indices: ", err)
+	}
+
+	row := TranslateLocustRow(sampleLocustRow, indices)
+	if row.Requests != 1 {
+		t.Error("Failed to parse requests: ", row.Requests, " expected: ", 1)
+	}
+
+	if row.TimeStamp != 1647453612 {
+		t.Error("Failed to parse timestamp: ", row.TimeStamp, " expected: ", 1647453612)
+	}
+
+	if row.Latency != 200 {
+		t.Error("Failed to parse latency: ", row.Latency, " expected: ", 200)
+	}
+
+	if row.Label != "/v1/simulations/latency?level=low" {
+		t.Error("Failed to parse label: ", row.Label, " expected: ", "/v1/simulations/latency?level=low")
+	}
+
+	if row.VirtualUsers != 1 {
+		t.Error("Failed to parse virtual users: ", row.VirtualUsers, " expected: ", 1)
 	}
 }

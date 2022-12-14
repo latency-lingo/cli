@@ -19,10 +19,6 @@ func ParseDataFileJmeter(file string) ([]UngroupedMetricDataPoint, error) {
 		rows []UngroupedMetricDataPoint
 	)
 
-	if err := validateFile(file); err != nil {
-		return nil, err
-	}
-
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot open file %s", file)
