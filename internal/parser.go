@@ -15,6 +15,8 @@ func ParseDataFile(file string, format string) ([]UngroupedMetricDataPoint, erro
 		return ParseDataFileJmeter(file)
 	case "k6":
 		return ParseDataFileK6(file)
+	case "gatling":
+		return ParseDataFileGatling(file)
 	default:
 		return nil, fmt.Errorf("unsupported format %s", format)
 	}

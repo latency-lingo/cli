@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"log"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/montanaflynn/stats"
@@ -68,6 +69,11 @@ func GroupDataPoints(ungrouped []UngroupedMetricDataPoint, timeAggregationLevel 
 		if startTime == 0 {
 			// init start time to last 5s interval from time stamp
 			startTime = calculateIntervalFloor(dp.TimeStamp, timeAggregationLevel.Seconds())
+		}
+
+		if dp.TimeStamp < startTime {
+			log.Printf("dp.TimeStamp: %d, startTime: %d", dp.TimeStamp, startTime)
+			log.Fatalf("received unsorted rows that break the reducer")
 		}
 
 		if dp.TimeStamp-startTime > timeAggregationLevel.Seconds() {
