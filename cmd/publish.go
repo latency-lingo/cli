@@ -20,6 +20,7 @@ var (
 	environment string
 	apiKey      string
 	rawSamples  bool
+	format      string
 )
 
 // publishCmd represents the publish command
@@ -74,6 +75,7 @@ func init() {
 	publishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
 	publishCmd.Flags().StringVar(&apiKey, "api-key", "", "API key to associate test runs with a user. Sign up to get one at https://latencylingo.com/account/api-access")
 	publishCmd.Flags().BoolVar(&rawSamples, "all-samples", false, "Publish all samples instead of pre-aggregated metrics.")
+	publishCmd.Flags().StringVar(&format, "format", "jmeter", "Format of the provided file. Supported values: jmeter, k6, locust, gatling.")
 	publishCmd.MarkFlagRequired("file")
 	publishCmd.MarkFlagRequired("api-key")
 	publishCmd.MarkFlagRequired("label")
@@ -124,7 +126,7 @@ func publishRawSamples() (string, error) {
 }
 
 func publishV2() (string, error) {
-	rows, err := internal.ParseDataFile(dataFile)
+	rows, err := internal.ParseDataFile(dataFile, format)
 	if err != nil {
 		return "", err
 	}

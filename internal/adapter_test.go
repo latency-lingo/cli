@@ -67,6 +67,24 @@ var (
 		"100",
 		"100",
 	}
+	sampleK6Row = K6Metric{
+		Type: "Point",
+		Data: K6MetricData{
+			Time:  "2022-03-16T19:21:52.508854-04:00",
+			Value: 4009.147,
+			Tags: K6MetricTags{
+				ExpectedResponse: "true",
+				Group:            "",
+				Method:           "GET",
+				Name:             "http://localhost:6700/v1/simulations/latency?level=high",
+				Proto:            "HTTP/1.1",
+				Scenario:         "default",
+				Status:           "200",
+				URL:              "http://localhost:6700/v1/simulations/latency?level=high",
+			},
+		},
+		Metric: "http_req_duration",
+	}
 )
 
 func TestBuildColumnIndicesV2(t *testing.T) {
@@ -152,5 +170,20 @@ func TestTranslateJmeterRowSample(t *testing.T) {
 
 	if row.Connect != 100 {
 		t.Error("Failed to parse Connect: ", row.Connect, " expected: ", 100)
+	}
+}
+
+func TestTranslateK6Row(t *testing.T) {
+	row := TranslateK6Row(sampleK6Row)
+	if row.Requests != 1 {
+		t.Error("Failed to parse requests: ", row.Requests, " expected: ", 1)
+	}
+
+	if row.TimeStamp != 1647472912 {
+		t.Error("Failed to parse timestamp: ", row.TimeStamp, " expected: ", 1647472912)
+	}
+
+	if row.Latency != 4009 {
+		t.Error("Failed to parse latency: ", row.Latency, " expected: ", 4009)
 	}
 }
