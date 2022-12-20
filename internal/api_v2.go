@@ -154,6 +154,30 @@ type CreateTestSummaryMetricsRequest struct {
 	Data *CreateTestSummaryMetricsRequestData `json:"data"`
 }
 
+type GetTestRunResultsRequestData struct {
+	Token string `json:"token"`
+}
+
+type GetTestRunResultsRequest struct {
+	Data *GetTestRunResultsRequestData `json:"data"`
+}
+
+type RunResultData struct {
+	RunId      string `json:"runId"`
+	Status     string `json:"status"`
+	Thresholds []struct {
+		Status      string `json:"status"`
+		Description string `json:"description"`
+	} `json:"thresholds"`
+}
+
+type GetTestRunResultsResponse struct {
+	Result struct {
+		Success bool           `json:"success"`
+		Data    *RunResultData `json:"data"`
+	} `json:"result"`
+}
+
 func CreateTestRun(host string, apiKey string, name string, startedAt uint64, stoppedAt uint64, publishStrategy string) (*TestRun, error) {
 	span := sentry.StartSpan(context.Background(), "CreateTestRun")
 	defer span.Finish()
@@ -373,6 +397,41 @@ func UpdateTestRun(host string, token string, stoppedAt uint64) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func GetTestRunResults(host string, token string) (*RunResultData, error) {
+	postBody, err := json.Marshal(GetTestRunResultsRequest{
+		Data: &GetTestRunResultsRequestData{
+			Token: token,
+		},
+	})
+
+	if err != nil {
+		return nil, errors.Wrap(err, "[test.getRunResults] failed to build request body")
+	}
+
+	resp, err := http.Post(host+"/v2/test.getRunResults", "application/json", bytes.NewBuffer(postBody))
+	if err != nil {
+		return nil, errors.Wrap(err, "[test.getRunResults] request failed")
+	}
+
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll((resp.Body))
+	if err != nil {
+		return nil, errors.Wrap(err, "[test.getRunResults] failed to parse response")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.Errorf("[test.getRunResults] request failed: %s", string(body))
+	}
+
+	var parsed GetTestRunResultsResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, errors.Wrap(err, "[test.getRunResults] failed to parse response")
+	}
+
+	return parsed.Result.Data, nil
 }
 
 func mapMetricDataPoints(dataPoints []MetricDataPoint) []NewChartMetric {

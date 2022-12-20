@@ -27,9 +27,16 @@ It supports JMeter with planned support for Locust, Gatling, and k6.`,
 	// Run: func(cmd *cobra.Command, args []string) { },
 }
 
+var (
+	InfoLog *log.Logger
+)
+
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	InfoLog = log.Default()
+	InfoLog.SetOutput(os.Stdout)
+
 	setupSentry()
 
 	defer sentry.Flush(2 * time.Second)

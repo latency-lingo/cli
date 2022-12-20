@@ -6,6 +6,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"os"
 
@@ -37,7 +38,7 @@ var publishCmd = &cobra.Command{
 			log.Fatalln("Received unknown environment", environment)
 		}
 
-		log.Println("Parsing provided file", dataFile)
+		InfoLog.Println("Parsing provided file", dataFile)
 		var (
 			reportPath string
 			runId      string
@@ -60,9 +61,9 @@ var publishCmd = &cobra.Command{
 
 		switch environment {
 		case "production":
-			log.Printf("Report can be found at https://latencylingo.com/%s", reportPath)
+			InfoLog.Printf("Report can be found at https://latencylingo.com/%s", reportPath)
 		case "development":
-			log.Printf("Report can be found at http://localhost:3000/%s", reportPath)
+			InfoLog.Printf("Report can be found at http://localhost:3000/%s", reportPath)
 		}
 	},
 }
@@ -102,7 +103,7 @@ func publishRawSamples() (string, error) {
 	runId := testRun.ID
 	runToken := testRun.WriteToken
 
-	log.Println("Created a new test run with ID", runId)
+	InfoLog.Println("Created a new test run with ID", runId)
 
 	if _, err := internal.CreateTestSamples(
 		hostName(environment),
@@ -112,7 +113,7 @@ func publishRawSamples() (string, error) {
 		return "", err
 	}
 
-	log.Println("Published", len(samples), "samples")
+	InfoLog.Println("Published", len(samples), "samples")
 
 	if _, err := internal.UpdateTestRun(
 		hostName(environment),
@@ -139,7 +140,7 @@ func publishV2() (string, error) {
 	runId := testRun.ID
 	runToken := testRun.WriteToken
 
-	log.Println("Created a new test run with ID", runId)
+	InfoLog.Println("Created a new test run with ID", runId)
 
 	if _, err := internal.CreateTestChartMetrics(
 		hostName(environment),
@@ -154,7 +155,7 @@ func publishV2() (string, error) {
 	for _, dp := range groupedResult.DataPointsByLabel {
 		labeledDpCount += len(dp)
 	}
-	log.Println("Published", len(groupedResult.DataPoints)+labeledDpCount, "chart metric rows")
+	InfoLog.Println("Published", len(groupedResult.DataPoints)+labeledDpCount, "chart metric rows")
 
 	metricSummary := internal.CalculateMetricSummaryOverall()
 	metricSummaryByLabel := internal.CalculateMetricSummaryByLabel()
@@ -168,7 +169,18 @@ func publishV2() (string, error) {
 		return "", err
 	}
 
-	log.Println("Published", len(metricSummaryByLabel)+1, "summary metric rows")
+	InfoLog.Println("Published", len(metricSummaryByLabel)+1, "summary metric rows")
+
+	result, err := internal.GetTestRunResults(hostName(environment), runToken)
+	if err != nil {
+		return "", err
+	}
+
+	jsonResult, err := json.Marshal(&result)
+	if err != nil {
+		return "", err
+	}
+	InfoLog.Println("Test run status", string(jsonResult))
 
 	return runId, nil
 }
