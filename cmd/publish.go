@@ -10,8 +10,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/AnthonyBobsin/latency-lingo-cli/internal"
 	"github.com/getsentry/sentry-go"
+	"github.com/latency-lingo/cli/internal"
 	"github.com/spf13/cobra"
 )
 

@@ -1,4 +1,4 @@
-module github.com/AnthonyBobsin/latency-lingo-cli
+module github.com/latency-lingo/cli
 
 go 1.18
 
