@@ -27,6 +27,7 @@ type CreateTestRunRequest struct {
 
 type TestRun struct {
 	ID           string `json:"id"`
+	ScenarioId   string `json:"scenarioId"`
 	ScenarioName string `json:"scenarioName"`
 	Environment  string `json:"environment"`
 	WriteToken   string `json:"writeToken"`

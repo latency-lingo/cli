@@ -103,7 +103,7 @@ func publishRawSamples() (string, error) {
 	runId := testRun.ID
 	runToken := testRun.WriteToken
 
-	InfoLog.Println("Created a new test run with ID", runId)
+	InfoLog.Println("Created a new test run with ID", runId, "under scenario", testRun.ScenarioId)
 
 	if _, err := internal.CreateTestSamples(
 		hostName(environment),
@@ -140,7 +140,7 @@ func publishV2() (string, error) {
 	runId := testRun.ID
 	runToken := testRun.WriteToken
 
-	InfoLog.Println("Created a new test run with ID", runId)
+	InfoLog.Println("Created a new test run with ID", runId, "under scenario", testRun.ScenarioId)
 
 	if _, err := internal.CreateTestChartMetrics(
 		hostName(environment),
