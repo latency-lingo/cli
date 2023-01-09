@@ -24,8 +24,8 @@ var (
 	format      string
 )
 
-// publishCmd represents the publish command
-var publishCmd = &cobra.Command{
+// PublishCmd represents the publish command
+var PublishCmd = &cobra.Command{
 	Use:   "publish",
 	Short: "Command to publish result datasets as a Latency Lingo performance test report.",
 	Long:  `Command to create a performance test report on Latency Lingo based on the specified test results dataset.`,
@@ -69,17 +69,15 @@ var publishCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(publishCmd)
-
-	publishCmd.Flags().StringVar(&dataFile, "file", "", "Test results file to parse and publish.")
-	publishCmd.Flags().StringVar(&reportLabel, "label", "", "Test scenario name for this run.")
-	publishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
-	publishCmd.Flags().StringVar(&apiKey, "api-key", "", "API key to associate test runs with a user. Sign up to get one at https://latencylingo.com/account/api-access")
-	publishCmd.Flags().BoolVar(&rawSamples, "all-samples", false, "Publish all samples instead of pre-aggregated metrics.")
-	publishCmd.Flags().StringVar(&format, "format", "jmeter", "Format of the provided file. Supported values: jmeter, k6, locust, gatling.")
-	publishCmd.MarkFlagRequired("file")
-	publishCmd.MarkFlagRequired("api-key")
-	publishCmd.MarkFlagRequired("label")
+	PublishCmd.Flags().StringVar(&dataFile, "file", "", "Test results file to parse and publish.")
+	PublishCmd.Flags().StringVar(&reportLabel, "label", "", "Test scenario name for this run.")
+	PublishCmd.Flags().StringVar(&environment, "env", "production", "Environment for API communication. Supported values: development, production.")
+	PublishCmd.Flags().StringVar(&apiKey, "api-key", "", "API key to associate test runs with a user. Sign up to get one at https://latencylingo.com/account/api-access")
+	PublishCmd.Flags().BoolVar(&rawSamples, "all-samples", false, "Publish all samples instead of pre-aggregated metrics.")
+	PublishCmd.Flags().StringVar(&format, "format", "jmeter", "Format of the provided file. Supported values: jmeter, k6, locust, gatling.")
+	PublishCmd.MarkFlagRequired("file")
+	PublishCmd.MarkFlagRequired("api-key")
+	PublishCmd.MarkFlagRequired("label")
 }
 
 func publishRawSamples() (string, error) {
