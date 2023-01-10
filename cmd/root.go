@@ -64,7 +64,7 @@ func init() {
 	// when this action is called directly.
 	RootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
-	RootCmd.AddCommand(PublishCmd, CompletionCmd)
+	RootCmd.AddCommand(PublishCmd, CompletionCmd, UpdateCmd)
 }
 
 func setupSentry() {
